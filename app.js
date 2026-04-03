@@ -21,53 +21,108 @@ class SeparatorModel {
         return K * Math.sqrt((rho_l - rho_g) / rho_g);
     }
 
-    // Modelo de eficiência de separação gás-líquido
-    // Baseado em correlações empíricas de separadores trifásicos
+    // Eficiência de separação gás-líquido
+    // Baseado em Souders-Brown + tempo de residência - Arnold & Stewart (2008)
     separationEfficiencyGL(flowRate, pressure, temperature, gor) {
-        const baseEff = 0.95;
-        // Vazão: eficiência cai com desvio do ponto ótimo (~1000 m³/dia)
-        const flowFactor = -0.04 * Math.pow((flowRate - 1000) / 700, 2);
-        // Pressão: maior pressão melhora separação G-L (mais gás dissolve, menos arraste)
-        const pressFactor = 0.03 * Math.log(pressure / 10);
-        // Temperatura: aumento moderado ajuda (reduz viscosidade)
-        const tempFactor = 0.015 * (temperature - 60) / 25;
-        // GOR: alto GOR dificulta separação (mais gás para separar)
-        const gorFactor = -0.03 * Math.pow((gor - 80) / 100, 2);
+        // Densidade do gás corrigida por P e T (lei dos gases reais, Z~0.85)
+        const rhoGasOp = 1.2 * (pressure / 10.0) * (288.15 / (temperature + 273.15)) / 0.85;
+        const rhoLiq = 870.0;
 
-        const efficiency = baseEff + flowFactor + pressFactor + tempFactor + gorFactor;
-        return Math.max(0.85, Math.min(0.99, efficiency));
+        // Velocidade crítica de Souders-Brown
+        const Ksb = 0.107 - 0.0002 * (pressure - 10.0);
+        const vCritical = Ksb * Math.sqrt((rhoLiq - rhoGasOp) / rhoGasOp);
+
+        // Velocidade superficial do gás (separador diam ~1.2m, área ~1.13 m²)
+        const areaSep = 1.13;
+        const gasFlowRate = flowRate * (gor / 1000.0) / 86400.0;
+        const vGas = gasFlowRate / areaSep;
+
+        // Razão de velocidades -> eficiência (sigmoidal)
+        const velocityRatio = vCritical > 0 ? vGas / vCritical : 1.0;
+        const effVelocity = 1.0 / (1.0 + Math.exp(8.0 * (velocityRatio - 0.7)));
+
+        // Fator de tempo de residência (volume ~15 m³, constante de tempo 3 min)
+        const volumeSep = 15.0;
+        const residenceTime = flowRate > 0 ? volumeSep / (flowRate / 86400.0) : 600;
+        const residenceTimeMin = residenceTime / 60.0;
+        const effResidence = 1.0 - Math.exp(-residenceTimeMin / 3.0);
+
+        // Fator de temperatura
+        const effTemp = 1.0 + 0.005 * (temperature - 50.0) / 10.0;
+
+        const efficiency = 0.99 * effVelocity * effResidence * Math.min(effTemp, 1.02);
+        return Math.max(0.70, Math.min(0.995, efficiency));
     }
 
-    // Modelo de eficiência de separação óleo-água
-    // Baseado em Lei de Stokes: maior T -> menor viscosidade -> melhor separação
+    // Eficiência de separação óleo-água
+    // Lei de Stokes + Beggs-Robinson - Hartland & Jeelani (1994)
     separationEfficiencyOA(flowRate, temperature, waterCut, viscosity) {
-        const baseEff = 0.89;
-        // Vazão: menor tempo de residência reduz eficiência
-        const flowFactor = -0.05 * Math.pow((flowRate - 800) / 800, 2);
-        // Temperatura: efeito forte via redução de viscosidade (Arrhenius-like)
-        const tempFactor = 0.04 * (1 - Math.exp(-(temperature - 45) / 20));
-        // Corte de água: emulsões mais estáveis com alto BSW
-        const waterFactor = -0.08 * Math.pow(waterCut / 100, 1.5);
-        // Viscosidade: relação directa com Lei de Stokes (v ~ 1/mu)
-        const viscFactor = -0.06 * Math.log(viscosity / 10);
+        // Viscosidade corrigida pela temperatura (Beggs-Robinson simplificada)
+        const TRef = 60.0;
+        const BVisc = 2500.0;
+        const muEff = viscosity * Math.exp(BVisc * (1.0 / (temperature + 273.15) - 1.0 / (TRef + 273.15)));
 
-        const efficiency = baseEff + flowFactor + tempFactor + waterFactor + viscFactor;
-        return Math.max(0.75, Math.min(0.96, efficiency));
+        // Velocidade de Stokes para gota d50=500µm (com coalescedor de placas)
+        const dDrop = 500e-6;
+        const deltaRho = 1020.0 - 870.0;
+        const vStokes = (2.0 * this.g * Math.pow(dDrop / 2.0, 2) * deltaRho) / (9.0 * muEff * 1e-3);
+
+        // Tempo de residência na seção O-A (50% do volume, ~7.5 m³)
+        const volumeOA = 15.0 * 0.5;
+        const tResidence = flowRate > 0 ? volumeOA / (flowRate / 86400.0) : 600.0;
+
+        // Distância efetiva de sedimentação com placas coalescedoras (0.15m)
+        const hEmulsion = 0.15;
+        const tSettling = vStokes > 0 ? hEmulsion / vStokes : 1e6;
+
+        // Razão de sedimentação
+        const settlingRatio = tResidence / tSettling;
+        const effSettling = 1.0 - Math.exp(-0.8 * settlingRatio);
+
+        // Penalidade de emulsão (faixa crítica 30-60% BSW)
+        const wcFrac = waterCut / 100.0;
+        const emulsionPenalty = 1.0 - 0.06 * Math.exp(-Math.pow((wcFrac - 0.45) / 0.15, 2));
+
+        const efficiency = 0.96 * effSettling * emulsionPenalty;
+        return Math.max(0.60, Math.min(0.96, efficiency));
     }
 
-    // Modelo de consumo energético (MWh/1000m³)
-    // Inclui bombeamento, aquecimento e compressão
+    // Consumo energético (MWh/1000m³)
+    // 4 componentes reais: bombeamento + aquecimento + compressão + auxiliares
+    // Ref: SPE-187412
     energyConsumption(flowRate, pressure, temperature) {
-        // Bombeamento: cresce com Q^1.2 (perdas de carga)
-        const pumpEnergy = 0.8 * Math.pow(flowRate / 1000, 1.2);
-        // Compressão: proporcional à razão de pressão
-        const compressionEnergy = 0.3 * (pressure / 10);
-        // Aquecimento: proporcional a delta-T acima da ambiente (35°C)
-        const heatingEnergy = 0.015 * Math.max(0, temperature - 35);
-        // Termo cruzado: alta vazão + alta pressão = mais energia
-        const crossTerm = 0.0002 * flowRate * (pressure - 8.5);
+        const deltaPBar = 3.0;
+        const etaBomba = 0.70;
+        const qM3s = flowRate / 86400.0;
+        const rhoFluid = 900.0;
 
-        return pumpEnergy + compressionEnergy + heatingEnergy + crossTerm;
+        // 1. Bombeamento
+        const pBomba = (qM3s * deltaPBar * 1e5) / (etaBomba * 1e6);
+        const eBomba = flowRate > 0 ? pBomba * 24.0 / (flowRate / 1000.0) : 0;
+
+        // 2. Aquecimento (delta T max 12°C, recuperação de calor 50%)
+        const cpFluid = 2100.0;
+        const tInlet = Math.max(40.0, temperature - 12.0);
+        const deltaT = Math.max(0, temperature - tInlet);
+        const massFlow = rhoFluid * qM3s;
+        const heatRecovery = 0.5;
+        const pAquec = (massFlow * cpFluid * deltaT * (1.0 - heatRecovery)) / (0.85 * 1e6);
+        const eAquec = flowRate > 0 ? pAquec * 24.0 / (flowRate / 1000.0) : 0;
+
+        // 3. Compressão de gás (isentrópica, k=1.3, eta=75%)
+        const pExport = 25.0;
+        const ratioComp = pressure > 0 ? pExport / pressure : 2.0;
+        const kGas = 1.3;
+        let eComp = 0;
+        if (ratioComp > 1) {
+            const compWorkFactor = (kGas / (kGas - 1)) * (Math.pow(ratioComp, (kGas - 1) / kGas) - 1) / 0.75;
+            eComp = 0.15 * compWorkFactor;
+        }
+
+        // 4. Auxiliares (instrumentação, iluminação)
+        const eAux = 0.08;
+
+        return Math.max(0.5, eBomba + eAquec + eComp + eAux);
     }
 
     // Número de Reynolds: Re = ρvD/μ
@@ -97,124 +152,219 @@ class OptimizationAlgorithms {
         this.separatorModel = new SeparatorModel();
     }
 
-    // Implementação simplificada do NSGA-II
-    nsgaIIOptimization(bounds, popSize = 50, generations = 100) {
-        const nVars = bounds.length;
+    // NSGA-II completo - Deb et al. (2002)
+    // SBX crossover + mutação polinomial + crowding distance
+    nsgaIIOptimization(bounds, popSize = 50, generations = 100, mutationRate = 0.1, crossoverRate = 0.9) {
         let population = this.generateRandomPopulation(popSize, bounds);
         const bestSolutions = [];
 
         for (let gen = 0; gen < generations; gen++) {
-            // Avaliação dos objetivos
-            const objectives = population.map(ind => this.evaluateObjectives(ind));
+            let objectives = population.map(ind => this.evaluateObjectives(ind));
 
-            // Seleção não-dominada
-            const paretoFront = this.fastNonDominatedSort(objectives);
+            // Gerar filhos via SBX + mutação polinomial
+            const offspring = this.createOffspring(population, objectives, bounds, crossoverRate, mutationRate);
+            const offspringObj = offspring.map(ind => this.evaluateObjectives(ind));
 
-            // Armazenar melhor solução
-            if (paretoFront.length > 0) {
-                const bestIdx = paretoFront[0];
-                bestSolutions.push({
-                    generation: gen,
-                    solution: [...population[bestIdx]],
-                    objectives: [...objectives[bestIdx]]
-                });
+            // Combinar pais + filhos
+            const combinedPop = [...population, ...offspring];
+            const combinedObj = [...objectives, ...offspringObj];
+
+            // Classificação não-dominada com crowding distance
+            const fronts = this.fastNonDominatedSortFull(combinedObj);
+
+            // Selecionar próxima geração
+            const newIndices = [];
+            for (const front of fronts) {
+                if (newIndices.length + front.length <= popSize) {
+                    newIndices.push(...front);
+                } else {
+                    const remaining = popSize - newIndices.length;
+                    const distances = this.crowdingDistance(combinedObj, front);
+                    const sorted = front.map((idx, i) => ({ idx, dist: distances[i] }))
+                        .sort((a, b) => b.dist - a.dist);
+                    for (let k = 0; k < remaining; k++) newIndices.push(sorted[k].idx);
+                    break;
+                }
             }
 
-            // Evolução da população
-            population = this.evolvePopulation(population, objectives, bounds);
+            population = newIndices.map(i => [...combinedPop[i]]);
+            objectives = newIndices.map(i => [...combinedObj[i]]);
+
+            const bestIdx = objectives.reduce((bi, o, i) => o[0] < objectives[bi][0] ? i : bi, 0);
+            bestSolutions.push({
+                generation: gen,
+                solution: [...population[bestIdx]],
+                objectives: [...objectives[bestIdx]]
+            });
         }
 
         return bestSolutions;
     }
 
     generateRandomPopulation(size, bounds) {
-        const population = [];
-        for (let i = 0; i < size; i++) {
-            const individual = bounds.map(bound =>
-                Math.random() * (bound[1] - bound[0]) + bound[0]
-            );
-            population.push(individual);
-        }
-        return population;
+        return Array.from({ length: size }, () =>
+            bounds.map(b => Math.random() * (b[1] - b[0]) + b[0])
+        );
     }
 
     evaluateObjectives(solution) {
         try {
             let [flowRate, pressure, temperature, waterCut] = solution;
-
-            // Garantir limites
             flowRate = Math.max(150, Math.min(2400, flowRate));
             pressure = Math.max(8.5, Math.min(15.2, pressure));
             temperature = Math.max(45, Math.min(85, temperature));
             waterCut = Math.max(15, Math.min(78, waterCut));
 
-            // Objetivo 1: Maximizar eficiência (convertido para minimização)
             const effGL = this.separatorModel.separationEfficiencyGL(flowRate, pressure, temperature, 100);
             const effOA = this.separatorModel.separationEfficiencyOA(flowRate, temperature, waterCut, 15);
             const efficiencyObj = -(effGL + effOA) / 2;
-
-            // Objetivo 2: Minimizar consumo energético
             const energyObj = this.separatorModel.energyConsumption(flowRate, pressure, temperature);
-
-            // Objetivo 3: Minimizar emissões
             const emissionsObj = energyObj * 0.5 + 0.1 * pressure;
-
             return [efficiencyObj, energyObj, emissionsObj];
         } catch (e) {
             return [0.0, 10.0, 10.0];
         }
     }
 
-    fastNonDominatedSort(objectives) {
+    fastNonDominatedSortFull(objectives) {
         const n = objectives.length;
         const dominatedCount = new Array(n).fill(0);
+        const dominatedSolutions = Array.from({ length: n }, () => []);
         const fronts = [[]];
 
         for (let i = 0; i < n; i++) {
-            for (let j = 0; j < n; j++) {
-                if (i !== j) {
-                    if (this.dominates(objectives[i], objectives[j])) {
-                        // i domina j
-                    } else if (this.dominates(objectives[j], objectives[i])) {
-                        dominatedCount[i]++;
-                    }
+            for (let j = i + 1; j < n; j++) {
+                if (this.dominates(objectives[i], objectives[j])) {
+                    dominatedSolutions[i].push(j);
+                    dominatedCount[j]++;
+                } else if (this.dominates(objectives[j], objectives[i])) {
+                    dominatedSolutions[j].push(i);
+                    dominatedCount[i]++;
                 }
             }
-
-            if (dominatedCount[i] === 0) {
-                fronts[0].push(i);
-            }
+            if (dominatedCount[i] === 0) fronts[0].push(i);
         }
 
-        return fronts[0].length > 0 ? fronts[0] : [0];
+        if (fronts[0].length === 0) { fronts[0] = Array.from({ length: n }, (_, i) => i); return fronts; }
+
+        let currentFront = 0;
+        while (fronts[currentFront] && fronts[currentFront].length > 0) {
+            const nextFront = [];
+            for (const i of fronts[currentFront]) {
+                for (const j of dominatedSolutions[i]) {
+                    dominatedCount[j]--;
+                    if (dominatedCount[j] === 0) nextFront.push(j);
+                }
+            }
+            currentFront++;
+            if (nextFront.length > 0) fronts.push(nextFront);
+            else break;
+        }
+        return fronts;
     }
 
     dominates(obj1, obj2) {
-        let betterInOne = false;
+        let allLeq = true, anyLess = false;
         for (let i = 0; i < obj1.length; i++) {
-            if (obj1[i] > obj2[i]) return false;
-            if (obj1[i] < obj2[i]) betterInOne = true;
+            if (obj1[i] > obj2[i]) { allLeq = false; break; }
+            if (obj1[i] < obj2[i]) anyLess = true;
         }
-        return betterInOne;
+        return allLeq && anyLess;
     }
 
-    evolvePopulation(population, objectives, bounds) {
-        const newPopulation = population.map(ind => [...ind]);
-        const mutationRate = 0.1;
+    crowdingDistance(objectives, frontIndices) {
+        const n = frontIndices.length;
+        if (n <= 2) return new Array(n).fill(Infinity);
+        const nObj = objectives[0].length;
+        const distances = new Array(n).fill(0);
 
-        for (let i = 0; i < population.length; i++) {
-            if (Math.random() < mutationRate) {
-                for (let j = 0; j < bounds.length; j++) {
-                    if (Math.random() < 0.3) {
-                        const mutation = this.randomNormal(0, 0.1) * (bounds[j][1] - bounds[j][0]);
-                        newPopulation[i][j] += mutation;
-                        newPopulation[i][j] = Math.max(bounds[j][0], Math.min(bounds[j][1], newPopulation[i][j]));
-                    }
+        for (let m = 0; m < nObj; m++) {
+            const sorted = frontIndices.map((idx, i) => ({ i, val: objectives[idx][m] }))
+                .sort((a, b) => a.val - b.val);
+            const range = sorted[n - 1].val - sorted[0].val;
+            distances[sorted[0].i] = Infinity;
+            distances[sorted[n - 1].i] = Infinity;
+            if (range > 0) {
+                for (let k = 1; k < n - 1; k++) {
+                    distances[sorted[k].i] += (sorted[k + 1].val - sorted[k - 1].val) / range;
                 }
             }
         }
+        return distances;
+    }
 
-        return newPopulation;
+    tournamentSelection(objectives, rank, crowdingDist) {
+        const n = objectives.length;
+        const i = Math.floor(Math.random() * n);
+        const j = Math.floor(Math.random() * n);
+        if (rank[i] < rank[j]) return i;
+        if (rank[i] > rank[j]) return j;
+        return crowdingDist[i] > crowdingDist[j] ? i : j;
+    }
+
+    sbxCrossover(p1, p2, bounds, etaC = 20) {
+        const c1 = [...p1], c2 = [...p2];
+        for (let i = 0; i < p1.length; i++) {
+            if (Math.random() < 0.5 && Math.abs(p1[i] - p2[i]) > 1e-14) {
+                const [x1, x2] = p1[i] < p2[i] ? [p1[i], p2[i]] : [p2[i], p1[i]];
+                const rand = Math.random();
+                const beta = 1.0 + (2.0 * (x1 - bounds[i][0]) / (x2 - x1));
+                const alpha = 2.0 - Math.pow(beta, -(etaC + 1));
+                const betaq = rand <= 1.0 / alpha
+                    ? Math.pow(rand * alpha, 1.0 / (etaC + 1))
+                    : Math.pow(1.0 / (2.0 - rand * alpha), 1.0 / (etaC + 1));
+                c1[i] = Math.max(bounds[i][0], Math.min(bounds[i][1], 0.5 * ((x1 + x2) - betaq * (x2 - x1))));
+                c2[i] = Math.max(bounds[i][0], Math.min(bounds[i][1], 0.5 * ((x1 + x2) + betaq * (x2 - x1))));
+            }
+        }
+        return [c1, c2];
+    }
+
+    polynomialMutation(individual, bounds, mutationRate, etaM = 20) {
+        const mutant = [...individual];
+        for (let i = 0; i < individual.length; i++) {
+            if (Math.random() < mutationRate) {
+                const deltaMax = bounds[i][1] - bounds[i][0];
+                if (deltaMax <= 0) continue;
+                const rand = Math.random();
+                const deltaq = rand < 0.5
+                    ? Math.pow(2.0 * rand, 1.0 / (etaM + 1)) - 1.0
+                    : 1.0 - Math.pow(2.0 * (1.0 - rand), 1.0 / (etaM + 1));
+                mutant[i] = Math.max(bounds[i][0], Math.min(bounds[i][1], individual[i] + deltaq * deltaMax));
+            }
+        }
+        return mutant;
+    }
+
+    createOffspring(population, objectives, bounds, crossoverRate, mutationRate) {
+        const popSize = population.length;
+        const fronts = this.fastNonDominatedSortFull(objectives);
+        const rank = new Array(popSize).fill(0);
+        for (let fi = 0; fi < fronts.length; fi++) {
+            for (const idx of fronts[fi]) { if (idx < popSize) rank[idx] = fi; }
+        }
+        const allDist = new Array(popSize).fill(0);
+        for (const front of fronts) {
+            const valid = front.filter(i => i < popSize);
+            if (valid.length > 0) {
+                const dists = this.crowdingDistance(objectives, valid);
+                valid.forEach((idx, i) => { allDist[idx] = dists[i]; });
+            }
+        }
+
+        const offspring = [];
+        for (let i = 0; i < popSize; i += 2) {
+            const p1 = this.tournamentSelection(objectives, rank, allDist);
+            const p2 = this.tournamentSelection(objectives, rank, allDist);
+            let [c1, c2] = Math.random() < crossoverRate
+                ? this.sbxCrossover(population[p1], population[p2], bounds)
+                : [[...population[p1]], [...population[p2]]];
+            c1 = this.polynomialMutation(c1, bounds, mutationRate);
+            c2 = this.polynomialMutation(c2, bounds, mutationRate);
+            offspring.push(c1);
+            if (i + 1 < popSize) offspring.push(c2);
+        }
+        return offspring;
     }
 
     randomNormal(mean, stdDev) {
@@ -235,15 +385,13 @@ class NeuralNetworkPredictor {
         this.scaler = { mean: null, std: null };
     }
 
-    // Gerar dados de treinamento
-    generateTrainingData(nSamples = 1000) {
-        const data = {
-            inputs: [],
-            outputs: []
-        };
+    // Gerar dados de treinamento com ruído de medição realista
+    // NOTA: dados sintéticos - para uso real, substituir por dados SCADA/PIMS
+    generateTrainingData(nSamples = 2000) {
+        const data = { inputs: [], outputs: [] };
+        const optAlg = new OptimizationAlgorithms();
 
         for (let i = 0; i < nSamples; i++) {
-            // Gerar parâmetros aleatórios
             const flowRate = 150 + Math.random() * (2400 - 150);
             const pressure = 8.5 + Math.random() * (15.2 - 8.5);
             const temperature = 45 + Math.random() * (85 - 45);
@@ -251,10 +399,14 @@ class NeuralNetworkPredictor {
             const gor = 45 + Math.random() * (180 - 45);
             const viscosity = 10 + Math.random() * (30 - 10);
 
-            // Calcular saídas usando modelo físico
-            const effGL = this.separatorModel.separationEfficiencyGL(flowRate, pressure, temperature, gor);
-            const effOA = this.separatorModel.separationEfficiencyOA(flowRate, temperature, waterCut, viscosity);
-            const energy = this.separatorModel.energyConsumption(flowRate, pressure, temperature);
+            let effGL = this.separatorModel.separationEfficiencyGL(flowRate, pressure, temperature, gor);
+            let effOA = this.separatorModel.separationEfficiencyOA(flowRate, temperature, waterCut, viscosity);
+            let energy = this.separatorModel.energyConsumption(flowRate, pressure, temperature);
+
+            // Adicionar ruído de medição (simula incertezas instrumentais)
+            effGL = Math.max(0.60, Math.min(0.995, effGL + optAlg.randomNormal(0, 0.02 * effGL)));
+            effOA = Math.max(0.50, Math.min(0.96, effOA + optAlg.randomNormal(0, 0.02 * effOA)));
+            energy = Math.max(0.3, energy + optAlg.randomNormal(0, 0.05 * energy));
 
             data.inputs.push([flowRate, pressure, temperature, waterCut, gor, viscosity]);
             data.outputs.push([effGL, effOA, energy]);
@@ -1937,118 +2089,155 @@ function renderControlSurface() {
 
 // Renderizar Análise Econômica
 function renderEconomic() {
-    const { flowRate, pressure, temperature, waterCut, gor, viscosity } = currentParams;
-
-    const effGL = separatorModel.separationEfficiencyGL(flowRate, pressure, temperature, gor);
-    const effOA = separatorModel.separationEfficiencyOA(flowRate, temperature, waterCut, viscosity);
-    const energy = separatorModel.energyConsumption(flowRate, pressure, temperature);
-
-    const avgEff = (effGL + effOA) / 2;
-    const baselineRevenue = 180000;
-    const energyCost = 50; // USD/MWh
-
-    const revenueGain = (avgEff - 0.92) * baselineRevenue;
-    const energyCostYear = energy * (flowRate / 1000) * 365 * energyCost;
-    const netBenefit = revenueGain - energyCostYear;
-
     const html = `
-        <h3><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M14 2v12H2V2h12zm-1 1H3v10h10V3zM8.5 4v1.5H10v1H8.5v1H10v1H8.5V10h3v1H4.5v-1h3V8.5H6v-1h1.5v-1H6v-1h1.5V4h1z"/></svg> Análise Econômica</h3>
+        <h3>Analise Economica - Dados Manuais</h3>
 
-        <div class="metrics-grid">
-            <div class="metric-card">
-                <div class="metric-label">Ganho de Receita</div>
-                <div class="metric-value">$${revenueGain.toFixed(0)}</div>
-                <div class="metric-delta">/ano</div>
+        <div class="info-box" style="margin-bottom:1rem;">
+            <strong>Todos os valores devem ser inseridos manualmente</strong> com base nos dados reais da sua planta/projeto. Os valores padrao sao apenas referencias iniciais.
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+            <div class="card">
+                <h4>Investimento e Financeiro</h4>
+                <label>Investimento Total (USD):</label>
+                <input type="number" id="econ_investment" value="450000" step="10000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
+                <label>Taxa de Desconto (%/ano):</label>
+                <input type="number" id="econ_discount" value="12" step="0.5" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
+                <label>Horizonte (anos):</label>
+                <input type="number" id="econ_years" value="15" step="1" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
             </div>
-            <div class="metric-card">
-                <div class="metric-label">Custo de Energia</div>
-                <div class="metric-value">$${energyCostYear.toFixed(0)}</div>
-                <div class="metric-delta">/ano</div>
+            <div class="card">
+                <h4>Receitas Anuais (USD/ano)</h4>
+                <label>Receita Adicional de Oleo:</label>
+                <input type="number" id="econ_revenue_oil" value="120000" step="5000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
+                <label>Receita de Gas Natural:</label>
+                <input type="number" id="econ_revenue_gas" value="50000" step="5000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
+                <label>Outras Receitas:</label>
+                <input type="number" id="econ_revenue_other" value="0" step="5000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
             </div>
-            <div class="metric-card">
-                <div class="metric-label">Benefício Líquido</div>
-                <div class="metric-value">$${netBenefit.toFixed(0)}</div>
-                <div class="metric-delta">/ano</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+            <div class="card">
+                <h4>Economias Anuais (USD/ano)</h4>
+                <label>Economia de Energia:</label>
+                <input type="number" id="econ_save_energy" value="30000" step="1000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
+                <label>Economia de Quimicos:</label>
+                <input type="number" id="econ_save_chem" value="15000" step="1000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
+                <label>Economia de Manutencao:</label>
+                <input type="number" id="econ_save_maint" value="20000" step="1000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
+                <label>Economia Tratamento Agua:</label>
+                <input type="number" id="econ_save_water" value="10000" step="1000" style="width:100%;padding:6px;margin-bottom:8px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">
             </div>
-            <div class="metric-card">
-                <div class="metric-label">ROI</div>
-                <div class="metric-value">${(netBenefit / 100000 * 100).toFixed(1)}%</div>
-                <div class="metric-delta">anual</div>
+            <div class="card">
+                <h4>Resultados</h4>
+                <div id="econResults" style="font-size:0.95rem;"></div>
             </div>
         </div>
 
-        <h4>Análise de Sensibilidade</h4>
+        <button onclick="calculateEconomics()" style="padding:10px 24px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:1rem;margin-bottom:1rem;">Calcular VPL / TIR / Payback</button>
+
         <div class="chart-container">
             <div id="economicChart"></div>
-        </div>
-
-        <div class="info-box">
-            <strong>Premissas:</strong><br>
-            • Receita base: $${baselineRevenue.toLocaleString()}/ano<br>
-            • Custo de energia: $${energyCost}/MWh<br>
-            • Eficiência de referência: 92%<br>
-            • Operação: 365 dias/ano
         </div>
     `;
 
     document.getElementById('economic').innerHTML = html;
-    renderEconomicChart();
 }
 
-function renderEconomicChart() {
-    const efficiencies = [];
-    const revenues = [];
-    const costs = [];
-    const netBenefits = [];
+function calculateEconomics() {
+    const investment = parseFloat(document.getElementById('econ_investment').value) || 0;
+    const discountRate = (parseFloat(document.getElementById('econ_discount').value) || 12) / 100;
+    const years = parseInt(document.getElementById('econ_years').value) || 15;
 
-    const baselineRevenue = 180000;
-    const energyCostPerMWh = 50;
-    const { flowRate, pressure, temperature } = currentParams;
+    const revOil = parseFloat(document.getElementById('econ_revenue_oil').value) || 0;
+    const revGas = parseFloat(document.getElementById('econ_revenue_gas').value) || 0;
+    const revOther = parseFloat(document.getElementById('econ_revenue_other').value) || 0;
+    const saveEnergy = parseFloat(document.getElementById('econ_save_energy').value) || 0;
+    const saveChem = parseFloat(document.getElementById('econ_save_chem').value) || 0;
+    const saveMaint = parseFloat(document.getElementById('econ_save_maint').value) || 0;
+    const saveWater = parseFloat(document.getElementById('econ_save_water').value) || 0;
 
-    for (let eff = 0.85; eff <= 0.99; eff += 0.01) {
-        efficiencies.push(eff * 100);
-        const revenue = (eff - 0.92) * baselineRevenue;
-        revenues.push(revenue);
+    const totalBenefits = revOil + revGas + revOther + saveEnergy + saveChem + saveMaint + saveWater;
 
-        const energy = separatorModel.energyConsumption(flowRate, pressure, temperature);
-        const cost = energy * (flowRate / 1000) * 365 * energyCostPerMWh;
-        costs.push(cost);
+    // VPL
+    let npv = -investment;
+    for (let t = 1; t <= years; t++) {
+        npv += totalBenefits / Math.pow(1 + discountRate, t);
+    }
 
-        netBenefits.push(revenue - cost);
+    // Payback simples
+    const payback = totalBenefits > 0 ? investment / totalBenefits : Infinity;
+
+    // TIR (bisecao)
+    let irr = 0;
+    if (totalBenefits > 0) {
+        let lo = -0.5, hi = 5.0;
+        for (let iter = 0; iter < 100; iter++) {
+            const mid = (lo + hi) / 2;
+            let npvTest = -investment;
+            for (let t = 1; t <= years; t++) npvTest += totalBenefits / Math.pow(1 + mid, t);
+            if (npvTest > 0) lo = mid; else hi = mid;
+        }
+        irr = (lo + hi) / 2;
+    }
+
+    // ROI descontado 10 anos
+    let npv10 = 0;
+    for (let t = 1; t <= Math.min(10, years); t++) npv10 += totalBenefits / Math.pow(1 + discountRate, t);
+    const roi = investment > 0 ? ((npv10 - investment) / investment * 100) : 0;
+
+    const resultsDiv = document.getElementById('econResults');
+    resultsDiv.innerHTML = `
+        <div class="metrics-grid" style="grid-template-columns:1fr 1fr;">
+            <div class="metric-card">
+                <div class="metric-label">Beneficio Anual Total</div>
+                <div class="metric-value" style="color:var(--success)">$${totalBenefits.toLocaleString()}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">VPL (${years} anos)</div>
+                <div class="metric-value" style="color:${npv>=0?'var(--success)':'var(--error)'}">$${Math.round(npv).toLocaleString()}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">TIR</div>
+                <div class="metric-value">${(irr*100).toFixed(1)}%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Payback</div>
+                <div class="metric-value">${payback < 50 ? payback.toFixed(1)+' anos' : '>50 anos'}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">ROI (10 anos)</div>
+                <div class="metric-value">${roi.toFixed(1)}%</div>
+            </div>
+        </div>
+    `;
+
+    // Grafico de fluxo de caixa acumulado
+    const yearsRange = [];
+    const cumulative = [];
+    let running = -investment;
+    yearsRange.push(0);
+    cumulative.push(running);
+    for (let t = 1; t <= years; t++) {
+        running += totalBenefits;
+        yearsRange.push(t);
+        cumulative.push(running);
     }
 
     const trace1 = {
-        x: efficiencies,
-        y: revenues,
-        mode: 'lines',
-        name: 'Ganho de Receita',
-        line: { color: '#2ca02c', width: 3 }
+        x: yearsRange, y: cumulative,
+        mode: 'lines+markers', name: 'Fluxo Acumulado',
+        line: { color: '#2ca02c', width: 3 },
+        fill: 'tozeroy', fillcolor: 'rgba(44,160,44,0.15)'
     };
 
-    const trace2 = {
-        x: efficiencies,
-        y: costs,
-        mode: 'lines',
-        name: 'Custo de Energia',
-        line: { color: '#d62728', width: 3 }
-    };
-
-    const trace3 = {
-        x: efficiencies,
-        y: netBenefits,
-        mode: 'lines',
-        name: 'Benefício Líquido',
-        line: { color: '#1f77b4', width: 3 }
-    };
-
-    const layout = {
-        title: 'Análise de Sensibilidade Econômica',
-        xaxis: { title: 'Eficiência (%)' },
-        yaxis: { title: 'Valor (USD/ano)' },
-        height: 400
-    };
-
-    Plotly.newPlot('economicChart', [trace1, trace2, trace3], layout, {responsive: true});
+    Plotly.newPlot('economicChart', [trace1], {
+        title: `Fluxo de Caixa Acumulado (${years} anos)`,
+        xaxis: { title: 'Ano' },
+        yaxis: { title: 'Valor (USD)' },
+        height: 400,
+        shapes: [{ type: 'line', x0: 0, x1: years, y0: 0, y1: 0, line: { color: 'red', dash: 'dash' } }]
+    }, { responsive: true });
 }
 
 // Renderizar Calculadora Avançada

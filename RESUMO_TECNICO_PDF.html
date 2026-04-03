@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resumo Tecnico - VPO - Vemba Process Optimizer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background: white;
+            padding: 2rem;
+            max-width: 210mm;
+            margin: 0 auto;
+        }
+
+        @media print {
+            body { padding: 0; font-size: 10pt; }
+            .page-break { page-break-before: always; }
+            .no-break { page-break-inside: avoid; }
+            h1, h2, h3 { page-break-after: avoid; }
+            table { page-break-inside: avoid; }
+        }
+
+        h1 { font-size: 2rem; font-weight: 700; color: #2563eb; margin-bottom: 0.5rem; border-bottom: 3px solid #2563eb; padding-bottom: 0.5rem; }
+        h2 { font-size: 1.5rem; font-weight: 600; color: #1e40af; margin-top: 2rem; margin-bottom: 1rem; border-left: 4px solid #2563eb; padding-left: 1rem; }
+        h3 { font-size: 1.2rem; font-weight: 600; color: #374151; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+        h4 { font-size: 1rem; font-weight: 600; color: #4b5563; margin-top: 1rem; margin-bottom: 0.5rem; }
+        p { margin-bottom: 1rem; }
+        ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+        li { margin-bottom: 0.5rem; }
+
+        table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+        thead { background: #2563eb; color: white; }
+        th, td { padding: 0.75rem; text-align: left; border: 1px solid #e5e7eb; }
+        tbody tr:nth-child(even) { background: #f9fafb; }
+
+        code { background: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 0.9em; color: #ef4444; }
+        pre { background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 6px; overflow-x: auto; margin: 1rem 0; font-size: 0.85rem; }
+        pre code { background: none; color: #10b981; padding: 0; }
+
+        .info-box { background: #eff6ff; border-left: 4px solid #2563eb; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+        .success-box { background: #f0fdf4; border-left: 4px solid #10b981; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+        .warning-box { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.85rem; font-weight: 600; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-yellow { background: #fef3c7; color: #92400e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+
+        .header { text-align: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid #e5e7eb; }
+        .header h1 { border-bottom: none; margin-bottom: 0.5rem; }
+        .header .subtitle { color: #6b7280; font-size: 1.1rem; margin-bottom: 0.5rem; }
+        .header .meta { color: #9ca3af; font-size: 0.9rem; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+        .stat-card { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; padding: 1rem; border-radius: 8px; text-align: center; }
+        .stat-card .number { font-size: 2rem; font-weight: 700; display: block; margin-bottom: 0.25rem; }
+        .stat-card .label { font-size: 0.85rem; opacity: 0.9; }
+
+        .formula { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 0.75rem; margin: 0.5rem 0; font-family: 'Courier New', monospace; }
+
+        .footer { margin-top: 3rem; padding-top: 1rem; border-top: 2px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 0.9rem; }
+
+        .checklist { list-style: none; margin-left: 0; }
+        .checklist li::before { content: "\2705 "; margin-right: 0.5rem; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>Resumo Tecnico</h1>
+        <div class="subtitle">VPO - Vemba Process Optimizer</div>
+        <div class="subtitle">Sistema Inteligente de Otimizacao de Separadores Trifasicos</div>
+        <div class="meta">Python / Streamlit | Versao 3.0 | Atualizado em 2026</div>
+    </div>
+
+    <!-- Overview -->
+    <section class="no-break">
+        <h2>Visao Geral</h2>
+        <p>Sistema para <strong>otimizacao de separadores trifasicos (oleo/agua/gas)</strong> na industria de petroleo, implementado em Python com interface Streamlit. Integra modelagem fisica fundamentada em correlacoes empiricas reconhecidas, inteligencia artificial, otimizacao multiobjetivo e analise economica.</p>
+
+        <div class="warning-box">
+            <strong>Nota importante:</strong> Os modelos fisicos sao baseados em correlacoes da literatura (Stokes, Souders-Brown, Beggs-Robinson). Os dados de treinamento da rede neural sao sinteticos. Para aplicacao industrial, e necessario calibrar os modelos com dados reais de planta (SCADA/PIMS).
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="no-break">
+        <h2>Numeros do Projeto</h2>
+        <div class="stats-grid">
+            <div class="stat-card"><span class="number">7</span><span class="label">Abas Funcionais</span></div>
+            <div class="stat-card"><span class="number">20+</span><span class="label">Graficos Interativos</span></div>
+            <div class="stat-card"><span class="number">5</span><span class="label">Classes Python</span></div>
+            <div class="stat-card"><span class="number">~3200</span><span class="label">Linhas de Codigo</span></div>
+        </div>
+    </section>
+
+    <!-- Stack -->
+    <section class="no-break">
+        <h2>Stack Tecnologica</h2>
+
+        <h3>Backend / Frontend</h3>
+        <ul>
+            <li><strong>Python 3.10+</strong> - Linguagem principal</li>
+            <li><strong>Streamlit</strong> - Interface web interativa</li>
+            <li><strong>Plotly</strong> - Visualizacoes 2D e 3D interativas</li>
+        </ul>
+
+        <h3>Bibliotecas Cientificas</h3>
+        <ul>
+            <li><strong>NumPy / Pandas</strong> - Computacao numerica e manipulacao de dados</li>
+            <li><strong>scikit-learn (MLPRegressor)</strong> - Rede neural artificial</li>
+            <li><strong>SciPy</strong> - Otimizacao (brentq para TIR)</li>
+        </ul>
+    </section>
+
+    <!-- Architecture -->
+    <div class="page-break"></div>
+    <section class="no-break">
+        <h2>Arquitetura do Sistema</h2>
+
+        <h3>5 Classes Principais</h3>
+
+        <h4>1. SeparatorModel (Modelagem Fisica)</h4>
+        <p>Modelos baseados em correlacoes empiricas da literatura:</p>
+        <table>
+            <thead><tr><th>Metodo</th><th>Fundamento</th><th>Referencia</th></tr></thead>
+            <tbody>
+                <tr><td>separation_efficiency_gl()</td><td>Souders-Brown + tempo de residencia</td><td>Arnold & Stewart (2008)</td></tr>
+                <tr><td>separation_efficiency_oa()</td><td>Lei de Stokes + Beggs-Robinson</td><td>Hartland & Jeelani (1994)</td></tr>
+                <tr><td>energy_consumption()</td><td>Bombeamento + aquecimento + compressao + auxiliares</td><td>SPE-187412</td></tr>
+                <tr><td>stokes_velocity()</td><td>v = 2gr^2(rho_p - rho_f) / (9mu)</td><td>Lei de Stokes</td></tr>
+                <tr><td>souders_brown_velocity()</td><td>v_g = K * sqrt((rho_l - rho_g) / rho_g)</td><td>Souders & Brown</td></tr>
+                <tr><td>reynolds_number()</td><td>Re = rho*v*D / mu</td><td>Adimensional</td></tr>
+                <tr><td>weber_number()</td><td>We = rho*v^2*L / sigma</td><td>Adimensional</td></tr>
+                <tr><td>bond_number()</td><td>Bo = Delta_rho*g*L^2 / sigma</td><td>Adimensional</td></tr>
+                <tr><td>capillary_number()</td><td>Ca = mu*v / sigma</td><td>Adimensional</td></tr>
+            </tbody>
+        </table>
+
+        <h4>2. OptimizationAlgorithms (NSGA-II)</h4>
+        <p>Implementacao completa do NSGA-II (Deb et al., 2002):</p>
+        <pre><code>class OptimizationAlgorithms:
+    nsga_ii_optimization()       # Algoritmo principal
+    fast_non_dominated_sort_full()  # Classificacao nao-dominada
+    crowding_distance()          # Diversidade na fronteira
+    tournament_selection()       # Selecao por torneio binario
+    sbx_crossover()              # Cruzamento SBX (Deb & Agrawal, 1995)
+    polynomial_mutation()        # Mutacao polinomial (Deb & Goyal, 1996)
+    create_offspring()           # Geracao de filhos
+    evaluate_objectives()        # 3 objetivos: eficiencia, energia, emissoes
+    dominates()                  # Teste de dominancia de Pareto</code></pre>
+
+        <h4>3. NeuralNetworkPredictor (Rede Neural)</h4>
+        <pre><code>class NeuralNetworkPredictor:
+    generate_training_data()     # 2000 amostras + ruido de medicao
+    train()                      # MLPRegressor (128-64-32), early stopping
+    predict()                    # Predicao com normalizacao/desnormalizacao</code></pre>
+
+        <h4>4. FuzzyController (Controle Fuzzy)</h4>
+        <pre><code>class FuzzyController:
+    triangular_membership()      # Funcao triangular
+    gaussian_membership()        # Funcao gaussiana
+    fuzzify_efficiency()         # 3 niveis: baixa, media, alta
+    defuzzify_control_action()   # Centro de gravidade (COG)</code></pre>
+    </section>
+
+    <!-- Physical Models Detail -->
+    <div class="page-break"></div>
+    <section class="no-break">
+        <h2>Modelos Fisicos - Detalhamento</h2>
+
+        <h3>1. Eficiencia Gas-Liquido</h3>
+        <p>Baseada no criterio de Souders-Brown para arraste de liquido e tempo de residencia.</p>
+
+        <h4>Etapas do calculo:</h4>
+        <ol>
+            <li><strong>Densidade do gas</strong> corrigida por P e T (lei dos gases reais, Z=0.85):
+                <div class="formula">rho_gas = 1.2 * (P/10) * (288.15 / (T+273.15)) / 0.85</div></li>
+            <li><strong>Velocidade critica</strong> de Souders-Brown:
+                <div class="formula">v_crit = K * sqrt((rho_liq - rho_gas) / rho_gas), K = 0.107 - 0.0002*(P-10)</div></li>
+            <li><strong>Velocidade superficial do gas</strong> no separador:
+                <div class="formula">v_gas = (Q * GOR/1000) / (86400 * A_sep)</div></li>
+            <li><strong>Eficiencia por velocidade</strong> (sigmoidal):
+                <div class="formula">eff_v = 1 / (1 + exp(8 * (v_gas/v_crit - 0.7)))</div></li>
+            <li><strong>Eficiencia por residencia</strong> (exponencial, tau=3 min):
+                <div class="formula">eff_r = 1 - exp(-t_res / 3)</div></li>
+            <li><strong>Eficiencia total</strong>:
+                <div class="formula">eta_GL = 0.99 * eff_v * eff_r * min(eff_T, 1.02)</div></li>
+        </ol>
+
+        <h4>Faixa de resultados tipicos:</h4>
+        <table>
+            <thead><tr><th>Condicao</th><th>Vazao (m3/d)</th><th>GOR</th><th>eta_GL</th></tr></thead>
+            <tbody>
+                <tr><td>Baixa carga</td><td>500</td><td>80</td><td>99.1%</td></tr>
+                <tr><td>Tipica</td><td>1250</td><td>95</td><td>98.9%</td></tr>
+                <tr><td>Alta carga</td><td>2000</td><td>150</td><td>97.1%</td></tr>
+                <tr><td>Extrema</td><td>2400</td><td>180</td><td>95.4%</td></tr>
+            </tbody>
+        </table>
+
+        <h3>2. Eficiencia Oleo-Agua</h3>
+        <p>Baseada na Lei de Stokes para sedimentacao gravitacional com correcao de viscosidade por Beggs-Robinson.</p>
+
+        <h4>Etapas do calculo:</h4>
+        <ol>
+            <li><strong>Viscosidade corrigida</strong> por temperatura (Beggs-Robinson simplificada):
+                <div class="formula">mu_eff = mu * exp(2500 * (1/(T+273.15) - 1/333.15))</div></li>
+            <li><strong>Velocidade de Stokes</strong> para gota media d50=500um (com coalescedor):
+                <div class="formula">v_stokes = (2*g*(d/2)^2 * Delta_rho) / (9 * mu_eff * 1e-3)</div></li>
+            <li><strong>Razao de sedimentacao</strong> (residencia / sedimentacao):
+                <div class="formula">settling_ratio = t_res / (h_placa / v_stokes)</div>
+                <p>h_placa = 0.15 m (distancia entre placas coalescedoras)</p></li>
+            <li><strong>Penalidade de emulsao</strong> (faixa critica 30-60% BSW):
+                <div class="formula">emulsion = 1 - 0.06 * exp(-((BSW/100 - 0.45) / 0.15)^2)</div></li>
+            <li><strong>Eficiencia total</strong>:
+                <div class="formula">eta_OA = 0.96 * eff_settling * emulsion</div></li>
+        </ol>
+
+        <h4>Faixa de resultados tipicos:</h4>
+        <table>
+            <thead><tr><th>Condicao</th><th>BSW (%)</th><th>mu (cP)</th><th>T (C)</th><th>eta_OA</th></tr></thead>
+            <tbody>
+                <tr><td>Favoravel</td><td>20</td><td>12</td><td>60</td><td>95.6%</td></tr>
+                <tr><td>Tipica</td><td>42</td><td>15</td><td>62</td><td>88.7%</td></tr>
+                <tr><td>Dificil</td><td>60</td><td>20</td><td>75</td><td>85.7%</td></tr>
+                <tr><td>Extrema</td><td>70</td><td>25</td><td>50</td><td>60.0%</td></tr>
+            </tbody>
+        </table>
+
+        <h3>3. Consumo Energetico</h3>
+        <p>Modelo com 4 componentes reais de consumo:</p>
+
+        <table>
+            <thead><tr><th>Componente</th><th>Calculo</th><th>Notas</th></tr></thead>
+            <tbody>
+                <tr><td>Bombeamento</td><td>P = Q * Delta_P / (eta * 3.6e6)</td><td>Delta_P = 3 bar, eta = 70%</td></tr>
+                <tr><td>Aquecimento</td><td>P = m * Cp * Delta_T * (1-HR) / (0.85e6)</td><td>HR = 50% (recuperacao), Delta_T max 12C</td></tr>
+                <tr><td>Compressao</td><td>Isentropica (k=1.3, eta=75%)</td><td>P_sep ate P_export (25 bar)</td></tr>
+                <tr><td>Auxiliares</td><td>0.08 MWh/1000m3 (fixo)</td><td>Instrumentacao, iluminacao</td></tr>
+            </tbody>
+        </table>
+
+        <h4>Faixa de resultados: 2-4 MWh/1000m3 (tipico para separadores de producao)</h4>
+    </section>
+
+    <!-- NSGA-II -->
+    <div class="page-break"></div>
+    <section class="no-break">
+        <h2>Otimizacao Multiobjetivo (NSGA-II)</h2>
+
+        <h3>Implementacao Completa - Deb et al. (2002)</h3>
+
+        <h4>Operadores Geneticos</h4>
+        <table>
+            <thead><tr><th>Operador</th><th>Metodo</th><th>Parametro</th></tr></thead>
+            <tbody>
+                <tr><td>Cruzamento</td><td>SBX (Simulated Binary Crossover)</td><td>eta_c = 20 (indice de distribuicao)</td></tr>
+                <tr><td>Mutacao</td><td>Polinomial (Deb & Goyal, 1996)</td><td>eta_m = 20 (indice de distribuicao)</td></tr>
+                <tr><td>Selecao</td><td>Torneio binario</td><td>rank + crowding distance</td></tr>
+                <tr><td>Sobrevivencia</td><td>Elitismo via mu+lambda</td><td>Pais + filhos combinados</td></tr>
+            </tbody>
+        </table>
+
+        <h4>Parametros Configuraveis via Interface</h4>
+        <table>
+            <thead><tr><th>Parametro</th><th>Faixa</th><th>Padrao</th></tr></thead>
+            <tbody>
+                <tr><td>Tamanho da populacao</td><td>20 - 100</td><td>50</td></tr>
+                <tr><td>Geracoes</td><td>50 - 200</td><td>100</td></tr>
+                <tr><td>Taxa de mutacao</td><td>0.01 - 0.30</td><td>0.10</td></tr>
+                <tr><td>Taxa de cruzamento</td><td>0.60 - 1.00</td><td>0.90</td></tr>
+            </tbody>
+        </table>
+
+        <h4>3 Objetivos Simultaneos</h4>
+        <ol>
+            <li><strong>Maximizar</strong> eficiencia media de separacao (G-L + O-A) / 2</li>
+            <li><strong>Minimizar</strong> consumo energetico (MWh/1000m3)</li>
+            <li><strong>Minimizar</strong> emissoes de CO2 (proporcional a energia + pressao)</li>
+        </ol>
+
+        <h4>Variaveis de Decisao</h4>
+        <table>
+            <thead><tr><th>Variavel</th><th>Limite Inferior</th><th>Limite Superior</th><th>Unidade</th></tr></thead>
+            <tbody>
+                <tr><td>Vazao</td><td>150</td><td>2400</td><td>m3/dia</td></tr>
+                <tr><td>Pressao</td><td>8.5</td><td>15.2</td><td>bar</td></tr>
+                <tr><td>Temperatura</td><td>45</td><td>85</td><td>C</td></tr>
+                <tr><td>Corte de agua</td><td>15</td><td>78</td><td>%</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Neural Network -->
+    <section class="no-break">
+        <h2>Rede Neural Artificial</h2>
+
+        <h3>Arquitetura - MLPRegressor (scikit-learn)</h3>
+        <table>
+            <thead><tr><th>Parametro</th><th>Valor</th></tr></thead>
+            <tbody>
+                <tr><td>Camadas ocultas</td><td>128 - 64 - 32 neuronios</td></tr>
+                <tr><td>Ativacao</td><td>ReLU</td></tr>
+                <tr><td>Otimizador</td><td>Adam (learning rate adaptativo)</td></tr>
+                <tr><td>Regularizacao</td><td>L2 (alpha = 0.0001)</td></tr>
+                <tr><td>Max iteracoes</td><td>3000</td></tr>
+                <tr><td>Early stopping</td><td>Sim (50 iteracoes sem melhoria)</td></tr>
+                <tr><td>Validacao</td><td>10% (durante treino)</td></tr>
+                <tr><td>Amostras de treino</td><td>2000 (sinteticas + ruido)</td></tr>
+                <tr><td>Split teste</td><td>20%</td></tr>
+            </tbody>
+        </table>
+
+        <h4>Entradas (6 features)</h4>
+        <p>Vazao, Pressao, Temperatura, Corte de Agua, GOR, Viscosidade</p>
+
+        <h4>Saidas (3 targets)</h4>
+        <p>Eficiencia G-L, Eficiencia O-A, Consumo Energetico</p>
+
+        <h4>Normalizacao</h4>
+        <p>StandardScaler aplicado tanto nas features (X) quanto nos targets (y) para melhorar convergencia.</p>
+
+        <h4>Ruido de Medicao Simulado</h4>
+        <table>
+            <thead><tr><th>Variavel</th><th>Ruido (desvio padrao)</th><th>Justificativa</th></tr></thead>
+            <tbody>
+                <tr><td>Eficiencia G-L</td><td>+/- 2% (relativo)</td><td>Erro tipico de vazimetros</td></tr>
+                <tr><td>Eficiencia O-A</td><td>+/- 2% (relativo)</td><td>Erro tipico de vazimetros</td></tr>
+                <tr><td>Energia</td><td>+/- 5% (relativo)</td><td>Erro tipico de medicao de potencia</td></tr>
+            </tbody>
+        </table>
+
+        <h4>Performance Tipica</h4>
+        <table>
+            <thead><tr><th>Metrica</th><th>Valor</th></tr></thead>
+            <tbody>
+                <tr><td>R2 treino</td><td>~0.79</td></tr>
+                <tr><td>R2 teste</td><td>~0.70</td></tr>
+                <tr><td>Erro de predicao (GL)</td><td>0.1 - 0.6%</td></tr>
+                <tr><td>Erro de predicao (OA)</td><td>0.1 - 0.4%</td></tr>
+                <tr><td>Erro de predicao (Energia)</td><td>1.5 - 2.8%</td></tr>
+            </tbody>
+        </table>
+
+        <div class="warning-box">
+            <strong>Dados sinteticos:</strong> A rede e treinada com dados gerados pelo modelo fisico (com ruido). Os scores refletem a capacidade de aprender o modelo, nao a precisao em dados reais. Para uso industrial, substituir por dados historicos de planta.
+        </div>
+    </section>
+
+    <!-- Fuzzy Control -->
+    <div class="page-break"></div>
+    <section class="no-break">
+        <h2>Controle Fuzzy</h2>
+
+        <h3>Funcoes de Pertinencia</h3>
+        <table>
+            <thead><tr><th>Tipo</th><th>Formula</th></tr></thead>
+            <tbody>
+                <tr><td>Triangular</td><td>mu(x) = max(0, min((x-a)/(b-a), (c-x)/(c-b)))</td></tr>
+                <tr><td>Gaussiana</td><td>mu(x) = exp(-0.5 * ((x-c)/sigma)^2)</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Variavel Fuzzificada: Eficiencia</h3>
+        <table>
+            <thead><tr><th>Nivel</th><th>Tipo</th><th>Parametros (a, b, c)</th></tr></thead>
+            <tbody>
+                <tr><td>Baixa</td><td>Triangular</td><td>0.80, 0.85, 0.90</td></tr>
+                <tr><td>Media</td><td>Triangular</td><td>0.85, 0.90, 0.95</td></tr>
+                <tr><td>Alta</td><td>Triangular</td><td>0.90, 0.95, 1.00</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Base de Regras</h3>
+        <table>
+            <thead><tr><th>Condicao</th><th>Acao</th></tr></thead>
+            <tbody>
+                <tr><td>Eficiencia BAIXA E Agua ALTA</td><td>Aumentar temperatura</td></tr>
+                <tr><td>Energia ALTA E Vazao NORMAL</td><td>Reduzir pressao</td></tr>
+                <tr><td>Espuma DETECTADA</td><td>Adicionar antiespumante</td></tr>
+                <tr><td>Emulsao ESTAVEL</td><td>Aumentar aquecimento</td></tr>
+                <tr><td>Pressao ALTA E GOR ALTO</td><td>Ajustar valvula gas</td></tr>
+                <tr><td>Temperatura BAIXA E Tempo ALTO</td><td>Aumentar aquecimento</td></tr>
+                <tr><td>Corte Agua EXTREMO</td><td>Ajustar tempo residencia</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Defuzzificacao</h3>
+        <p>Metodo do Centro de Gravidade (COG): x* = Sum(xi * mu(xi)) / Sum(mu(xi))</p>
+
+        <h3>Superficie de Controle 3D</h3>
+        <p>Grade 25x25 pontos, parametros X e Y configuraveis pelo usuario (Eficiencia, Corte de Agua, Temperatura, Pressao).</p>
+    </section>
+
+    <!-- Economic Analysis -->
+    <section class="no-break">
+        <h2>Analise Economica</h2>
+
+        <div class="info-box">
+            <strong>Entrada 100% manual:</strong> Todos os valores economicos sao inseridos pelo usuario com base nos dados reais da planta. Nenhum valor e estimado automaticamente por formulas internas.
+        </div>
+
+        <h3>Entradas do Usuario</h3>
+        <table>
+            <thead><tr><th>Categoria</th><th>Campos</th></tr></thead>
+            <tbody>
+                <tr><td>Investimento</td><td>Investimento total (USD), Taxa de desconto (%), Horizonte (anos), Dias operacionais/ano</td></tr>
+                <tr><td>Receitas anuais</td><td>Receita adicional de oleo, Receita de gas, Outras receitas</td></tr>
+                <tr><td>Economias anuais</td><td>Energia, Quimicos, Manutencao, Tratamento de agua</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Indicadores Calculados</h3>
+        <table>
+            <thead><tr><th>Indicador</th><th>Formula</th></tr></thead>
+            <tbody>
+                <tr><td>VPL</td><td>Sum(CF_t / (1+r)^t) para t = 0 ate horizonte</td></tr>
+                <tr><td>TIR</td><td>Taxa r tal que VPL = 0 (scipy.optimize.brentq)</td></tr>
+                <tr><td>Payback simples</td><td>Investimento / Beneficio anual</td></tr>
+                <tr><td>ROI descontado (10 anos)</td><td>(VPL_10y - Investimento) / Investimento * 100</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Analises Complementares</h3>
+        <ul>
+            <li><strong>Diagrama Tornado:</strong> Sensibilidade do VPL a variacao de +/-20% em cada componente</li>
+            <li><strong>Cenarios:</strong> Otimista (+20% beneficios, -10% investimento), Realista (base), Pessimista (-30% beneficios, +15% investimento)</li>
+            <li><strong>Monte Carlo:</strong> N simulacoes (100-1000) com incerteza configuravel (5-50%) nos beneficios e 10% no investimento. Calcula VPL medio, desvio padrao, probabilidade VPL>0, VaR 95%.</li>
+        </ul>
+    </section>
+
+    <!-- Tabs -->
+    <div class="page-break"></div>
+    <section class="no-break">
+        <h2>7 Abas do Sistema</h2>
+
+        <table>
+            <thead><tr><th>Aba</th><th>Funcionalidades</th><th>Graficos</th></tr></thead>
+            <tbody>
+                <tr><td>1. Dashboard</td><td>Metricas em tempo real, status operacional, tendencias</td><td>Tendencia temporal, Radar de performance</td></tr>
+                <tr><td>2. Modelagem Matematica</td><td>Equacoes fundamentais, perfis de densidade/velocidade/pressao</td><td>Stokes, campo de velocidades 2D, conservacao de massa/momento</td></tr>
+                <tr><td>3. Redes Neurais</td><td>Treinamento e predicao, arquitetura visual</td><td>Comparacao modelo vs NN, gauge charts</td></tr>
+                <tr><td>4. Otimizacao</td><td>NSGA-II com parametros configuraveis</td><td>Convergencia, Pareto, sensibilidade, radar atual vs otimo</td></tr>
+                <tr><td>5. Controle Fuzzy</td><td>Fuzzificacao, inferencia, controle adaptativo</td><td>Funcoes de pertinencia, superficie 3D, historico de controle</td></tr>
+                <tr><td>6. Analise Economica</td><td>Inputs manuais, VPL/TIR/Payback</td><td>Pizza, fluxo de caixa, tornado, cenarios, Monte Carlo</td></tr>
+                <tr><td>7. Calculadora</td><td>Reynolds, Weber, Bond, Capilar</td><td>Mapa We vs Re</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Validation -->
+    <section class="no-break">
+        <h2>Validacao dos Resultados</h2>
+
+        <h3>Faixas Realistas Verificadas</h3>
+        <table>
+            <thead><tr><th>Variavel</th><th>Faixa do Modelo</th><th>Faixa da Literatura</th><th>Status</th></tr></thead>
+            <tbody>
+                <tr><td>Eficiencia G-L</td><td>95 - 99%</td><td>94 - 99.5%</td><td>OK</td></tr>
+                <tr><td>Eficiencia O-A</td><td>60 - 96%</td><td>55 - 97%</td><td>OK</td></tr>
+                <tr><td>Consumo energetico</td><td>2 - 4 MWh/1000m3</td><td>1.5 - 5 MWh/1000m3</td><td>OK</td></tr>
+                <tr><td>Velocidade Stokes (100um)</td><td>0.22 mm/s</td><td>0.1 - 0.5 mm/s</td><td>OK</td></tr>
+                <tr><td>Souders-Brown</td><td>2.88 m/s</td><td>2 - 4 m/s</td><td>OK</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Limitacoes Conhecidas</h3>
+        <ul>
+            <li>Modelos nao calibrados com dados reais de planta</li>
+            <li>Rede neural treinada com dados sinteticos (R2 teste ~0.70)</li>
+            <li>Geometria do separador fixa (diametro 1.2m, volume 15m3)</li>
+            <li>Propriedades dos fluidos simplificadas (sem composicao detalhada)</li>
+            <li>Dados temporais do dashboard sao simulados</li>
+        </ul>
+    </section>
+
+    <!-- How to Use -->
+    <div class="page-break"></div>
+    <section class="no-break">
+        <h2>Como Usar</h2>
+
+        <h3>Requisitos</h3>
+        <pre><code>pip install streamlit numpy pandas plotly scikit-learn scipy matplotlib seaborn</code></pre>
+
+        <h3>Executar</h3>
+        <pre><code>streamlit run Vemba.py</code></pre>
+
+        <h3>Fluxo de Uso Recomendado</h3>
+        <ol>
+            <li>Ajustar parametros de processo na barra lateral (vazao, pressao, temperatura, etc.)</li>
+            <li>Verificar eficiencias e consumo no <strong>Dashboard</strong></li>
+            <li>Explorar relacoes fisicas na aba <strong>Modelagem Matematica</strong></li>
+            <li>Treinar e testar predicoes na aba <strong>Redes Neurais</strong></li>
+            <li>Buscar condicoes otimas na aba <strong>Otimizacao</strong></li>
+            <li>Verificar acoes de controle na aba <strong>Controle Fuzzy</strong></li>
+            <li>Inserir dados economicos reais na aba <strong>Analise Economica</strong></li>
+            <li>Calcular numeros adimensionais na <strong>Calculadora</strong></li>
+        </ol>
+    </section>
+
+    <!-- Conclusion -->
+    <section class="no-break">
+        <h2>Conclusao</h2>
+
+        <p>O VPO integra modelagem fisica fundamentada, inteligencia artificial e analise economica em uma interface unica para suporte a decisao na operacao de separadores trifasicos.</p>
+
+        <ul>
+            <li><strong>Modelagem fisica:</strong> Stokes, Souders-Brown, Beggs-Robinson, componentes de energia</li>
+            <li><strong>Inteligencia artificial:</strong> MLPRegressor (128-64-32) com early stopping</li>
+            <li><strong>Otimizacao:</strong> NSGA-II completo (SBX + mutacao polinomial + crowding distance)</li>
+            <li><strong>Controle:</strong> Sistema fuzzy com 7 regras e superficie 3D</li>
+            <li><strong>Economia:</strong> Inputs manuais com VPL, TIR, Monte Carlo</li>
+        </ul>
+
+        <div class="warning-box">
+            <strong>Para uso industrial:</strong> Calibrar os modelos fisicos com dados reais de planta (SCADA/PIMS), treinar a rede neural com dados historicos, e validar as faixas operacionais para o separador especifico.
+        </div>
+
+        <h3>Resultados Esperados (com calibracao)</h3>
+        <table>
+            <thead><tr><th>Indicador</th><th>Faixa Tipica</th></tr></thead>
+            <tbody>
+                <tr><td>Melhoria de eficiencia</td><td>2 - 5%</td></tr>
+                <tr><td>Reducao de energia</td><td>3 - 8%</td></tr>
+                <tr><td>Reducao de emissoes</td><td>3 - 10% (proporcional a energia)</td></tr>
+                <tr><td>Reducao de manutencao</td><td>3 - 6%</td></tr>
+                <tr><td>Aumento de producao</td><td>1 - 4% (via recuperacao)</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Export -->
+    <section class="no-break">
+        <h2>Exportar para PDF</h2>
+        <div class="info-box">
+            <ol>
+                <li>Abra este arquivo (<code>RESUMO_TECNICO_PDF.html</code>) no navegador</li>
+                <li>Pressione <strong>Ctrl+P</strong></li>
+                <li>Destino: <strong>Salvar como PDF</strong></li>
+                <li>Graficos de fundo: <strong>Ativado</strong></li>
+                <li>Clique em <strong>Salvar</strong></li>
+            </ol>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p><strong>VPO - Vemba Process Optimizer</strong></p>
+        <p>Sistema Inteligente de Otimizacao de Separadores Trifasicos</p>
+        <p>Python / Streamlit | Versao 3.0</p>
+        <p style="margin-top: 1rem;">
+            <span class="badge badge-blue">Python</span>
+            <span class="badge badge-blue">Streamlit</span>
+            <span class="badge badge-blue">scikit-learn</span>
+            <span class="badge badge-green">Plotly</span>
+            <span class="badge badge-yellow">NSGA-II</span>
+            <span class="badge badge-yellow">Controle Fuzzy</span>
+        </p>
+        <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #9ca3af;">
+            Baseado na tese: "Aplicacao da Inteligencia Artificial na Otimizacao da Producao de Petroleo a partir do Separador de Producao"
+        </p>
+    </div>
+</body>
+</html>
