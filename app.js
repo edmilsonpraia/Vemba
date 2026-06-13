@@ -1393,12 +1393,18 @@ function renderNeural() {
             <div id="trainingProgress"></div>
         </div>
 
-        ${nnPredictor.isTrained ? `
         <div class="card">
-            <h4>Arquitetura da Rede Neural</h4>
+            <h4>Arquitetura da Rede Neural — MLP 6 → 64 → 32 → 16 → 3</h4>
             <div id="architectureViz"></div>
+            <div id="layerTable" style="margin-top: 1.25rem;"></div>
         </div>
 
+        <div class="card">
+            <h4>Formulação Matemática</h4>
+            <div id="formulasContent"></div>
+        </div>
+
+        ${nnPredictor.isTrained ? `
         <div class="charts-grid">
             <div class="card">
                 <h4>Histórico de Treinamento - Loss</h4>
@@ -1428,8 +1434,10 @@ function renderNeural() {
 
     document.getElementById('neural').innerHTML = html;
 
+    renderArchitecture();
+    renderFormulas();
+
     if (nnPredictor.isTrained) {
-        renderArchitecture();
         renderTrainingHistory();
     }
 }
@@ -1541,26 +1549,215 @@ async function makePrediction() {
 
 // Renderizar arquitetura da rede
 function renderArchitecture() {
-    const architecture = nnPredictor.getArchitecture();
-    if (!architecture) return;
+    const layers = [
+        { name: 'Input',   subtitle: '6 features',   count: 6,  visible: 6, act: 'Linear',              color: '#10b981' },
+        { name: 'Dense 1', subtitle: '64 unidades',  count: 64, visible: 8, act: 'ReLU + Dropout(0.2)', color: '#007acc' },
+        { name: 'Dense 2', subtitle: '32 unidades',  count: 32, visible: 6, act: 'ReLU + Dropout(0.2)', color: '#007acc' },
+        { name: 'Dense 3', subtitle: '16 unidades',  count: 16, visible: 4, act: 'ReLU',                color: '#007acc' },
+        { name: 'Output',  subtitle: '3 saídas',     count: 3,  visible: 3, act: 'Linear',              color: '#f59e0b' }
+    ];
 
-    const html = `
-        <div style="display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; gap: 1rem;">
-            ${architecture.map((layer, idx) => `
-                <div style="text-align: center;">
-                    <div style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-                                color: white; padding: 1rem; border-radius: 0.5rem; min-width: 120px;">
-                        <div style="font-weight: 600; margin-bottom: 0.5rem;">${layer.type}</div>
-                        ${layer.units ? `<div style="font-size: 0.875rem;">Units: ${layer.units}</div>` : ''}
-                        ${layer.activation ? `<div style="font-size: 0.75rem; opacity: 0.9;">${layer.activation}</div>` : ''}
-                    </div>
-                    ${idx < architecture.length - 1 ? '<div style="margin: 0.5rem 0;">→</div>' : ''}
-                </div>
-            `).join('')}
+    const inputLabels  = ['Q (m³/d)', 'P (bar)', 'T (°C)', 'WC (%)', 'GOR', 'μ (cP)'];
+    const outputLabels = ['η_GL', 'η_OA', 'E (kW)'];
+
+    const W = 980, H = 560;
+    const xs = [110, 300, 490, 680, 870];
+    const yCenter = 290;
+    const nodeR = 14;
+    const spacing = 38;
+
+    const nodes = layers.map((layer) => {
+        const positions = [];
+        const startY = yCenter - ((layer.visible - 1) * spacing) / 2;
+        for (let i = 0; i < layer.visible; i++) {
+            positions.push({ x: xs[layers.indexOf(layer)], y: startY + i * spacing });
+        }
+        return positions;
+    });
+
+    let connections = '';
+    for (let li = 0; li < layers.length - 1; li++) {
+        for (const n1 of nodes[li]) {
+            for (const n2 of nodes[li + 1]) {
+                connections += `<line x1="${n1.x}" y1="${n1.y}" x2="${n2.x}" y2="${n2.y}" stroke="rgba(0,122,204,0.18)" stroke-width="0.7"/>`;
+            }
+        }
+    }
+
+    let labels = '';
+    layers.forEach((layer, li) => {
+        labels += `
+            <text x="${xs[li]}" y="55"      text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">${layer.name}</text>
+            <text x="${xs[li]}" y="74"      text-anchor="middle" font-size="11" fill="#858585">${layer.subtitle}</text>
+            <text x="${xs[li]}" y="${H-30}" text-anchor="middle" font-size="11" fill="#f59e0b">${layer.act}</text>
+        `;
+    });
+
+    let ellipses = '';
+    layers.forEach((layer, li) => {
+        if (layer.visible < layer.count) {
+            const lastY = nodes[li][nodes[li].length - 1].y;
+            ellipses += `<text x="${xs[li]}" y="${lastY + 32}" text-anchor="middle" font-size="22" fill="#858585">⋮</text>`;
+            ellipses += `<text x="${xs[li]}" y="${lastY + 60}" text-anchor="middle" font-size="10" font-weight="600" fill="#858585">+${layer.count - layer.visible} unidades</text>`;
+        }
+    });
+
+    let nodeEls = '';
+    nodes.forEach((layerNodes, li) => {
+        const layer = layers[li];
+        layerNodes.forEach((n, ni) => {
+            nodeEls += `<circle cx="${n.x}" cy="${n.y}" r="${nodeR}" fill="${layer.color}" fill-opacity="0.28" stroke="${layer.color}" stroke-width="2"/>`;
+            if (li === 0) {
+                nodeEls += `<text x="${n.x - 22}" y="${n.y + 4}" text-anchor="end"   font-size="11" font-family="monospace" fill="currentColor">${inputLabels[ni]}</text>`;
+            }
+            if (li === layers.length - 1) {
+                nodeEls += `<text x="${n.x + 22}" y="${n.y + 4}" text-anchor="start" font-size="11" font-family="monospace" fill="currentColor">${outputLabels[ni]}</text>`;
+            }
+        });
+    });
+
+    const svg = `
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"
+             style="width:100%;height:auto;max-height:580px;color:var(--text-primary);background:rgba(0,0,0,0.08);border-radius:6px;">
+            <g>${connections}</g>
+            <g>${nodeEls}</g>
+            <g>${labels}</g>
+            <g>${ellipses}</g>
+        </svg>
+        <div style="text-align:center;font-size:0.78rem;color:var(--text-secondary);margin-top:0.5rem;">
+            Diagrama esquemático — apenas algumas unidades das camadas ocultas são desenhadas para legibilidade.
         </div>
     `;
 
-    document.getElementById('architectureViz').innerHTML = html;
+    const p1 = 6 * 64 + 64;    // 448
+    const p2 = 64 * 32 + 32;   // 2080
+    const p3 = 32 * 16 + 16;   // 528
+    const p4 = 16 * 3 + 3;     // 51
+    const total = p1 + p2 + p3 + p4;
+
+    const rows = [
+        ['L0', 'Input',   '6',  '—',         '—'],
+        ['L1', 'Dense',   '64', 'ReLU',      `6·64 + 64 = ${p1}`],
+        ['—',  'Dropout', '—',  'p = 0.2',   '0'],
+        ['L2', 'Dense',   '32', 'ReLU',      `64·32 + 32 = ${p2.toLocaleString('pt-BR')}`],
+        ['—',  'Dropout', '—',  'p = 0.2',   '0'],
+        ['L3', 'Dense',   '16', 'ReLU',      `32·16 + 16 = ${p3}`],
+        ['L4', 'Dense',   '3',  'Linear',    `16·3 + 3 = ${p4}`]
+    ];
+
+    const table = `
+        <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse: collapse; font-size: 0.85rem;">
+            <thead>
+                <tr style="background: var(--bg-tertiary);">
+                    <th style="padding:0.5rem 0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Camada</th>
+                    <th style="padding:0.5rem 0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Tipo</th>
+                    <th style="padding:0.5rem 0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Unidades</th>
+                    <th style="padding:0.5rem 0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Ativação</th>
+                    <th style="padding:0.5rem 0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Parâmetros (W + b)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows.map(r => `
+                    <tr>
+                        ${r.map(c => `<td style="padding:0.45rem 0.75rem;border-bottom:1px solid var(--border-color);font-family:monospace;">${c}</td>`).join('')}
+                    </tr>
+                `).join('')}
+                <tr>
+                    <td colspan="4" style="padding:0.6rem 0.75rem;font-weight:600;">Total de parâmetros treináveis</td>
+                    <td style="padding:0.6rem 0.75rem;font-family:monospace;font-weight:700;color:var(--accent);">${total.toLocaleString('pt-BR')}</td>
+                </tr>
+            </tbody>
+        </table>
+        </div>
+    `;
+
+    document.getElementById('architectureViz').innerHTML = svg;
+    document.getElementById('layerTable').innerHTML = table;
+}
+
+// Renderizar fórmulas matemáticas da rede neural
+function renderFormulas() {
+    const target = document.getElementById('formulasContent');
+    if (!target) return;
+
+    const formula = (label, eq, desc) => `
+        <div style="margin:0.85rem 0;padding:0.7rem 1rem;background:var(--bg-tertiary);border-left:3px solid var(--accent);border-radius:4px;">
+            <div style="font-weight:600;color:var(--accent);margin-bottom:0.35rem;font-size:0.82rem;letter-spacing:0.02em;">${label}</div>
+            <div style="font-family:'Cambria Math','STIX Two Math',Georgia,serif;font-size:1.02rem;padding:0.35rem 0;color:var(--text-bright);line-height:1.7;">${eq}</div>
+            ${desc ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.25rem;">${desc}</div>` : ''}
+        </div>
+    `;
+
+    target.innerHTML = `
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem;">
+            Equações que governam o treino e a inferência da MLP. <strong>x ∈ ℝ⁶</strong> é o vetor de entrada (Q, P, T, WC, GOR, μ);
+            <strong>ŷ ∈ ℝ³</strong> é a saída predita (η<sub>GL</sub>, η<sub>OA</sub>, E).
+        </p>
+
+        ${formula(
+            '1 · Normalização Z-score (pré-processamento)',
+            'x̃<sub>i</sub> &nbsp;=&nbsp; ( x<sub>i</sub> − μ<sub>i</sub> ) / ( σ<sub>i</sub> + ε )',
+            'μ e σ são estimados sobre o conjunto de treino. ε = 10⁻⁷ evita divisão por zero.'
+        )}
+
+        ${formula(
+            '2 · Camada densa — propagação direta',
+            'z<sup>(ℓ)</sup> &nbsp;=&nbsp; W<sup>(ℓ)</sup> · a<sup>(ℓ−1)</sup> &nbsp;+&nbsp; b<sup>(ℓ)</sup>',
+            'W<sup>(ℓ)</sup> ∈ ℝ<sup>n<sub>ℓ</sub>×n<sub>ℓ−1</sub></sup>, b<sup>(ℓ)</sup> ∈ ℝ<sup>n<sub>ℓ</sub></sup>. Para ℓ = 1, a<sup>(0)</sup> = x̃.'
+        )}
+
+        ${formula(
+            '3 · Ativação ReLU (camadas ocultas L1, L2, L3)',
+            'a<sup>(ℓ)</sup> &nbsp;=&nbsp; ReLU( z<sup>(ℓ)</sup> ) &nbsp;=&nbsp; max( 0, z<sup>(ℓ)</sup> )',
+            'Não-linearidade que zera ativações negativas; barata e eficaz contra vanishing gradient.'
+        )}
+
+        ${formula(
+            '4 · Dropout (regularização nas camadas L1 e L2)',
+            'ã<sup>(ℓ)</sup> &nbsp;=&nbsp; ( a<sup>(ℓ)</sup> ⊙ m ) / ( 1 − p ), &nbsp;&nbsp; m<sub>i</sub> ~ Bernoulli( 1 − p )',
+            'p = 0.2. Aplicado apenas durante o treino; em inferência o dropout fica desativado.'
+        )}
+
+        ${formula(
+            '5 · Camada de saída (regressão linear)',
+            'ŷ &nbsp;=&nbsp; W<sup>(out)</sup> · a<sup>(3)</sup> &nbsp;+&nbsp; b<sup>(out)</sup>',
+            'Sem ativação → preserva a escala física das saídas (eficiências em [0,1] e energia em kW).'
+        )}
+
+        ${formula(
+            '6 · Função de perda — Mean Squared Error',
+            'ℒ &nbsp;=&nbsp; (1 / N) &nbsp; Σ<sub>n=1</sub><sup>N</sup> &nbsp; ‖ y<sup>(n)</sup> − ŷ<sup>(n)</sup> ‖²',
+            'Erro quadrático médio sobre as 3 saídas em todo o mini-batch (N = 32).'
+        )}
+
+        ${formula(
+            '7 · Otimizador Adam (α = 10⁻³)',
+            `
+                g<sub>t</sub> &nbsp;=&nbsp; ∇<sub>θ</sub> ℒ ( θ<sub>t−1</sub> )<br>
+                m<sub>t</sub> &nbsp;=&nbsp; β₁ &middot; m<sub>t−1</sub> &nbsp;+&nbsp; ( 1 − β₁ ) &middot; g<sub>t</sub><br>
+                v<sub>t</sub> &nbsp;=&nbsp; β₂ &middot; v<sub>t−1</sub> &nbsp;+&nbsp; ( 1 − β₂ ) &middot; g<sub>t</sub>²<br>
+                m̂<sub>t</sub> &nbsp;=&nbsp; m<sub>t</sub> / ( 1 − β₁<sup>t</sup> ), &nbsp;&nbsp; v̂<sub>t</sub> &nbsp;=&nbsp; v<sub>t</sub> / ( 1 − β₂<sup>t</sup> )<br>
+                θ<sub>t</sub> &nbsp;=&nbsp; θ<sub>t−1</sub> &nbsp;−&nbsp; α &middot; m̂<sub>t</sub> / ( √v̂<sub>t</sub> + ε )
+            `,
+            'Hiperparâmetros padrão: β₁ = 0.9, β₂ = 0.999, ε = 10⁻⁸.'
+        )}
+
+        <div style="margin-top:1.25rem;padding:0.75rem 1rem;background:rgba(0,122,204,0.08);border-radius:6px;">
+            <div style="font-weight:600;margin-bottom:0.5rem;color:var(--accent);">Hiperparâmetros de Treino</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.5rem 1rem;font-size:0.85rem;">
+                <div><strong>Épocas:</strong> 50</div>
+                <div><strong>Batch size:</strong> 32</div>
+                <div><strong>Learning rate:</strong> α = 10⁻³</div>
+                <div><strong>Validation split:</strong> 20%</div>
+                <div><strong>Amostras de treino:</strong> 1 000</div>
+                <div><strong>Dropout rate:</strong> p = 0.2</div>
+                <div><strong>Otimizador:</strong> Adam</div>
+                <div><strong>Loss:</strong> MSE</div>
+                <div><strong>Métricas:</strong> MSE, MAE</div>
+            </div>
+        </div>
+    `;
 }
 
 // Renderizar histórico de treinamento
