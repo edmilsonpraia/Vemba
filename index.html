@@ -1821,6 +1821,264 @@
         .chat-input-bar .chat-send svg { width: 16px; height: 16px; }
 
         /* ============================================
+           PAGE LAYOUT · hierarquia didática
+           ============================================ */
+        .page-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: var(--spacing-lg);
+            padding-bottom: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .page-head h2 {
+            font-family: var(--font-display);
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--text-bright);
+            letter-spacing: -0.02em;
+            margin: 0 0 4px 0;
+        }
+        .page-head p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin: 0;
+            max-width: 65ch;
+            line-height: 1.55;
+        }
+        .page-head .page-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: var(--font-family);
+            text-align: right;
+            white-space: nowrap;
+        }
+        .page-head .page-meta strong {
+            display: block;
+            color: var(--text-bright);
+            font-family: var(--font-display);
+            font-size: 18px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .section {
+            margin: var(--spacing-xl) 0;
+        }
+        .section-head {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: var(--spacing-md);
+        }
+        .section-head .section-num {
+            font-family: var(--font-family);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+        }
+        .section-head h3 {
+            font-family: var(--font-display);
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-bright);
+            margin: 0;
+            letter-spacing: -0.005em;
+        }
+        .section-head .section-caption {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+        .section > .cards-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: var(--spacing-md);
+        }
+
+        /* ============================================
+           MODEL CARD · padrão didático
+           fórmula + variáveis + validade + output ao vivo + ref
+           ============================================ */
+        .model-card {
+            background: var(--bg-secondary);
+            background-image: linear-gradient(180deg, rgba(255,255,255,0.025), transparent 40%);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: var(--shadow-sm);
+        }
+        .model-card__head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .model-card__title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-bright);
+            font-family: var(--font-display);
+            letter-spacing: -0.005em;
+        }
+        .model-card__title small {
+            display: block;
+            font-size: 11px;
+            font-weight: 400;
+            color: var(--text-muted);
+            margin-top: 2px;
+            font-family: var(--font-ui);
+            letter-spacing: 0;
+        }
+        .model-card__badge {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 3px 8px;
+            border-radius: 999px;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .model-card__badge.ok  { background: var(--success-weak); color: var(--success); }
+        .model-card__badge.warn{ background: var(--warning-weak); color: var(--warning); }
+        .model-card__badge.info{ background: var(--info-weak); color: var(--info); }
+
+        .model-card__eq {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            font-family: var(--font-family);
+            font-size: 16px;
+            color: var(--text-bright);
+            text-align: center;
+            letter-spacing: 0.02em;
+            line-height: 1.5;
+            overflow-x: auto;
+        }
+        .model-card__eq .sub { font-size: 0.7em; vertical-align: sub; }
+        .model-card__eq .sup { font-size: 0.7em; vertical-align: super; }
+
+        /* Legenda de variáveis — table clean */
+        .legend {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 4px 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .legend .sym {
+            font-family: var(--font-family);
+            font-size: 12px;
+            color: var(--text-bright);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .legend .unit {
+            color: var(--text-muted);
+            font-family: var(--font-family);
+            font-size: 11px;
+            white-space: nowrap;
+            text-align: right;
+        }
+
+        /* Painel de output ao vivo (valor calculado com params actuais) */
+        .live-out {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 12px;
+            background: var(--accent-ghost);
+            border: 1px solid rgba(6,182,212,0.25);
+            border-radius: var(--radius-md);
+        }
+        .live-out .live-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .live-out .live-value {
+            font-family: var(--font-display);
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-bright);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.01em;
+        }
+        .live-out .live-value small {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-left: 4px;
+            font-family: var(--font-ui);
+        }
+
+        .live-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 6px;
+        }
+
+        /* Rodapé do card: referência e links */
+        .model-card__foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-color);
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .model-card__foot .ref {
+            font-family: var(--font-family);
+            letter-spacing: 0;
+        }
+
+        /* Banner de validação (invariantes físicos violados) */
+        .validation-banner {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 12px 16px;
+            margin: 0;
+            background: var(--error-weak);
+            border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--text-primary);
+            font-size: 13px;
+            border-left: 3px solid var(--error);
+        }
+        .validation-banner-icon {
+            color: var(--error);
+            flex-shrink: 0;
+            padding-top: 2px;
+        }
+        .validation-banner-icon svg { width: 20px; height: 20px; }
+        .validation-banner-body strong {
+            display: block;
+            color: var(--error);
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        .validation-banner-body ul {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+        .validation-banner-body li { margin: 2px 0; }
+
+        /* ============================================
            STATUS BAR (rodapé da aplicação)
            ============================================ */
         .status-bar {

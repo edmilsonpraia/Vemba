@@ -66,80 +66,216 @@ if (typeof Plotly !== 'undefined' && !Plotly.__vpoPatched) {
     Plotly.__vpoPatched = true;
 }
 
-// Classe para modelagem matemática do separador
+// ============================================================================
+// SeparatorModel — física do separador tri-fásico
+// Referências:
+//  · Morsi & Alexander (1972) J. Fluid Mech. 55, 193  — Cd piecewise
+//  · Clift, Grace & Weber (1978) "Bubbles, Drops, and Particles"
+//  · GPSA Engineering Data Book (SI) §7 — K-factor tabulado
+//  · Fabian et al. (1993) Hydrocarbon Processing — correção wire mesh
+//  · Hinze (1955) AIChE J. 1, 289 — critério Weber crítico (We_c ≈ 12)
+//  · Redlich & Kwong (1949) Chem. Rev. 44, 233 — EoS cúbica para Z-factor
+//  · Beggs & Robinson (1975) JPT — viscosidade por temperatura
+// ============================================================================
 class SeparatorModel {
     constructor() {
-        this.g = 9.81; // aceleração da gravidade (m/s²)
+        this.g = 9.81;      // aceleração da gravidade (m/s²)
         this.pi = Math.PI;
+        this.R = 8.314;     // J/(mol·K)
     }
 
-    // Calcula velocidade terminal pela Lei de Stokes
-    // v = (2gr²(ρp - ρf))/(9μ)
+    // ------------------------------------------------------------------
+    // 1. ARRASTE — Cd de Morsi-Alexander piecewise (válido 0 < Re < 5·10⁴)
+    // ------------------------------------------------------------------
+    cdMorsiAlexander(Re) {
+        if (!Number.isFinite(Re) || Re <= 0) return 24;            // trata degenerado como Stokes alto
+        if (Re < 0.1)    return 24 / Re;                           // Stokes puro
+        if (Re < 1)      return 22.73/Re + 0.0903/(Re*Re) + 3.69;
+        if (Re < 10)     return 29.1667/Re - 3.8889/(Re*Re) + 1.222;
+        if (Re < 100)    return 46.5/Re - 116.67/(Re*Re) + 0.6167;
+        if (Re < 1000)   return 98.33/Re - 2778/(Re*Re) + 0.3644;
+        if (Re < 5000)   return 148.62/Re - 47500/(Re*Re) + 0.357;
+        if (Re < 10000)  return -490.546/Re + 578700/(Re*Re) + 0.46;
+        return 0.44;                                               // regime de Newton
+    }
+
+    // Velocidade terminal real, iterativa, válida em qualquer regime.
+    // μ em Pa·s · d em m · ρ em kg/m³ → retorna v em m/s
+    terminalVelocity(d, rho_p, rho_f, mu, { maxIter = 50, tol = 1e-6 } = {}) {
+        const dRho = rho_p - rho_f;
+        if (!Number.isFinite(d) || d <= 0 || !Number.isFinite(mu) || mu <= 0 || dRho === 0) return 0;
+        // Chute inicial por Stokes
+        let v = (this.g * d*d * dRho) / (18 * mu);
+        for (let i = 0; i < maxIter; i++) {
+            const Re = Math.abs(rho_f * v * d / mu);
+            if (Re < 1e-8) break;
+            const Cd = this.cdMorsiAlexander(Re);
+            const vNew = Math.sign(dRho) * Math.sqrt(Math.abs(4 * this.g * d * dRho / (3 * rho_f * Cd)));
+            if (Math.abs(vNew - v) < tol) { v = vNew; break; }
+            v = vNew;
+        }
+        return v;
+    }
+
+    // Regime diagnóstico (para UI): "stokes" | "intermediate" | "newton"
+    particleRegime(d, rho_p, rho_f, mu) {
+        const v = this.terminalVelocity(d, rho_p, rho_f, mu);
+        const Re = Math.abs(rho_f * v * d / mu);
+        if (Re < 1) return 'stokes';
+        if (Re < 1000) return 'intermediate';
+        return 'newton';
+    }
+
+    // Wrapper legado (Lei de Stokes pura — só usar para Re<1).
+    // Mantido para backwards-compat; recomendado: terminalVelocity().
     stokesVelocity(radius, rho_p, rho_f, mu) {
         return (2 * this.g * Math.pow(radius, 2) * (rho_p - rho_f)) / (9 * mu);
     }
 
-    // Velocidade crítica de Souders-Brown para evitar arraste
-    // vg = K√((ρl - ρg)/ρg)
-    soudersBrownVelocity(rho_l, rho_g, K = 0.107) {
-        return K * Math.sqrt((rho_l - rho_g) / rho_g);
+    // ------------------------------------------------------------------
+    // 2. SOUDERS-BROWN — K tabelado (GPSA) + correção de demister
+    // ------------------------------------------------------------------
+    // K em m/s a aplicar em v_g = K·√((ρl−ρg)/ρg). Base: wire-mesh horizontal.
+    // Curva GPSA (adaptada): K cai de 0.107 @ atm até ≈0.055 @ 60 bar.
+    soudersBrownK(pressure_bar, demisterType = 'mesh') {
+        const P_kPa = Math.max(0, pressure_bar) * 100;
+        let K;
+        if (P_kPa < 700)        K = 0.107;
+        else if (P_kPa < 2000)  K = 0.107 - 1.5e-5 * (P_kPa - 700);
+        else if (P_kPa < 6000)  K = 0.088 - 1.0e-5 * (P_kPa - 2000);
+        else                    K = 0.055;
+
+        // Multiplicadores por tipo de demister (Fabian 1993, Stewart-Arnold)
+        const mult = {
+            mesh:    1.00,    // wire mesh padrão (baseline FEED)
+            vane:    2.00,    // vane pack — maior capacidade
+            cyclone: 2.50,    // separador ciclónico
+            none:    0.50     // vaso sem demister — conservador
+        }[demisterType] ?? 1.0;
+        return K * mult;
     }
 
-    // Eficiência de separação gás-líquido
-    // Baseado em Souders-Brown + tempo de residência - Arnold & Stewart (2008)
+    // vg = K·√((ρl−ρg)/ρg) — assinatura legada compatível
+    soudersBrownVelocity(rho_l, rho_g, K) {
+        // Se K não vier explicitamente, usa curva GPSA @ 10 bar (compat).
+        const Keff = (K === undefined) ? this.soudersBrownK(10, 'mesh') : K;
+        if (!(rho_g > 0) || !(rho_l > rho_g)) return 0;
+        return Keff * Math.sqrt((rho_l - rho_g) / rho_g);
+    }
+
+    // ------------------------------------------------------------------
+    // 3. REDLICH-KWONG EoS — Z e densidade reais do gás
+    // ------------------------------------------------------------------
+    // Resolve a forma cúbica adimensional: Z³ − Z² + Z(A−B−B²) − AB = 0
+    // Default Tc/Pc: gás natural ~85% CH4 (Tc≈190K, Pc≈46 bar).
+    zFactorRK(P_bar, T_K, { Tc = 190.6, Pc_bar = 46.0 } = {}) {
+        if (!(P_bar > 0) || !(T_K > 0)) return 1.0;
+        const Tr = T_K / Tc;
+        // a, b na forma reduzida adimensional (A, B):
+        // A = 0.42748·P_r/T_r^2.5   B = 0.08664·P_r/T_r
+        const Pr = P_bar / Pc_bar;
+        const A = 0.42748 * Pr / Math.pow(Tr, 2.5);
+        const B = 0.08664 * Pr / Tr;
+        // Newton no ramo gasoso (Z≈1)
+        let Z = 1.0;
+        for (let i = 0; i < 40; i++) {
+            const f  = Z*Z*Z - Z*Z + Z*(A - B - B*B) - A*B;
+            const df = 3*Z*Z - 2*Z + (A - B - B*B);
+            if (Math.abs(df) < 1e-14) break;
+            const Zn = Z - f/df;
+            if (!Number.isFinite(Zn)) break;
+            if (Math.abs(Zn - Z) < 1e-8) { Z = Zn; break; }
+            Z = Math.max(0.05, Zn);
+        }
+        // clamps físicos sãos
+        return Math.max(0.10, Math.min(1.20, Z));
+    }
+
+    // ρ_gás [kg/m³] por RK: ρ = P·Mw / (Z·R·T)
+    gasDensityRK(P_bar, T_K, Mw_g_per_mol = 18.0) {
+        const Z = this.zFactorRK(P_bar, T_K);
+        const P_Pa = P_bar * 1e5;
+        const rho = P_Pa * (Mw_g_per_mol / 1000.0) / (Z * this.R * T_K);
+        return Number.isFinite(rho) && rho > 0 ? rho : 1.0;
+    }
+
+    // ------------------------------------------------------------------
+    // 4. WEBER CRÍTICO — diâmetro máximo estável de gota
+    // We = ρ_c·v²·d/σ > We_c ⇒ gota fragmenta
+    // ------------------------------------------------------------------
+    maxStableDroplet(velocity, rho_c, { sigma = 0.025, We_c = 12 } = {}) {
+        if (!(velocity > 0) || !(rho_c > 0)) return Infinity;
+        return (sigma * We_c) / (rho_c * velocity * velocity);
+    }
+
+    // ------------------------------------------------------------------
+    // 5. EFICIÊNCIA G-L — Souders-Brown GPSA + tempo de residência
+    // ------------------------------------------------------------------
     separationEfficiencyGL(flowRate, pressure, temperature, gor) {
-        // Densidade do gás corrigida por P e T (lei dos gases reais, Z~0.85)
-        const rhoGasOp = 1.2 * (pressure / 10.0) * (288.15 / (temperature + 273.15)) / 0.85;
+        // guards de validade
+        if (!(flowRate > 0) || !(pressure > 0) || !Number.isFinite(temperature)) return 0;
+
+        const T_K = temperature + 273.15;
+        // ρ_gás real via Redlich-Kwong (substitui Z=0.85 fixo)
+        const rhoGasOp = this.gasDensityRK(pressure, T_K);
         const rhoLiq = 870.0;
 
-        // Velocidade crítica de Souders-Brown
-        const Ksb = 0.107 - 0.0002 * (pressure - 10.0);
-        const vCritical = Ksb * Math.sqrt((rhoLiq - rhoGasOp) / rhoGasOp);
+        // Souders-Brown com K tabelado GPSA (wire mesh)
+        const vCritical = this.soudersBrownVelocity(rhoLiq, rhoGasOp, this.soudersBrownK(pressure, 'mesh'));
 
-        // Velocidade superficial do gás (separador diam ~1.2m, área ~1.13 m²)
+        // Velocidade superficial do gás no vaso (área ~1.13 m²)
         const areaSep = 1.13;
         const gasFlowRate = flowRate * (gor / 1000.0) / 86400.0;
         const vGas = gasFlowRate / areaSep;
 
-        // Razão de velocidades -> eficiência (sigmoidal)
+        // Razão v_g/v_crítica (should < 1 para boa separação)
         const velocityRatio = vCritical > 0 ? vGas / vCritical : 1.0;
         const effVelocity = 1.0 / (1.0 + Math.exp(8.0 * (velocityRatio - 0.7)));
 
-        // Fator de tempo de residência (volume ~15 m³, constante de tempo 3 min)
+        // Tempo de residência (volume ~15 m³)
         const volumeSep = 15.0;
-        const residenceTime = flowRate > 0 ? volumeSep / (flowRate / 86400.0) : 600;
-        const residenceTimeMin = residenceTime / 60.0;
-        const effResidence = 1.0 - Math.exp(-residenceTimeMin / 3.0);
+        const residenceTime = volumeSep / (flowRate / 86400.0);
+        const effResidence = 1.0 - Math.exp(-(residenceTime / 60.0) / 3.0);
 
-        // Fator de temperatura
+        // Fator temperatura (Beggs-Robinson suave)
         const effTemp = 1.0 + 0.005 * (temperature - 50.0) / 10.0;
 
         const efficiency = 0.99 * effVelocity * effResidence * Math.min(effTemp, 1.02);
         return Math.max(0.70, Math.min(0.995, efficiency));
     }
 
-    // Eficiência de separação óleo-água
-    // Lei de Stokes + Beggs-Robinson - Hartland & Jeelani (1994)
+    // ------------------------------------------------------------------
+    // 6. EFICIÊNCIA O-A — velocidade terminal real + Weber critico
+    // ------------------------------------------------------------------
     separationEfficiencyOA(flowRate, temperature, waterCut, viscosity) {
-        // Viscosidade corrigida pela temperatura (Beggs-Robinson simplificada)
+        if (!(flowRate > 0) || !(viscosity > 0) || !Number.isFinite(temperature)) return 0;
+
+        // Beggs-Robinson: μ(T) em cP → Pa·s
         const TRef = 60.0;
         const BVisc = 2500.0;
-        const muEff = viscosity * Math.exp(BVisc * (1.0 / (temperature + 273.15) - 1.0 / (TRef + 273.15)));
+        const muEff_cP = viscosity * Math.exp(BVisc * (1.0/(temperature+273.15) - 1.0/(TRef+273.15)));
+        const muEff_Pa_s = muEff_cP * 1e-3;
 
-        // Velocidade de Stokes para gota d50=500µm (com coalescedor de placas)
-        const dDrop = 500e-6;
-        const deltaRho = 1020.0 - 870.0;
-        const vStokes = (2.0 * this.g * Math.pow(dDrop / 2.0, 2) * deltaRho) / (9.0 * muEff * 1e-3);
+        const rhoWater = 1020.0;
+        const rhoOil = 870.0;
 
-        // Tempo de residência na seção O-A (50% do volume, ~7.5 m³)
-        const volumeOA = 15.0 * 0.5;
-        const tResidence = flowRate > 0 ? volumeOA / (flowRate / 86400.0) : 600.0;
+        // Diâmetro-alvo de gota d50 (nominal), mas limitado pelo Weber crítico
+        // calculado com a velocidade superficial da fase contínua no vaso.
+        const areaOA = 1.13;
+        const vSup = (flowRate / 86400.0) / areaOA; // m/s
+        const dMax = this.maxStableDroplet(vSup, rhoOil, { sigma: 0.025, We_c: 12 });
+        const dDrop = Math.min(500e-6, dMax); // se o escoamento quebra gotas, d cai
 
-        // Distância efetiva de sedimentação com placas coalescedoras (0.15m)
+        // Velocidade terminal REAL (Morsi-Alexander, não só Stokes)
+        const vTerm = this.terminalVelocity(dDrop, rhoWater, rhoOil, muEff_Pa_s);
+
+        // Tempo de residência na secção O-A (50% do volume)
+        const volumeOA = 7.5;
+        const tResidence = volumeOA / (flowRate / 86400.0);
+
+        // Distância efectiva de sedimentação (coalescedor de placas)
         const hEmulsion = 0.15;
-        const tSettling = vStokes > 0 ? hEmulsion / vStokes : 1e6;
-
-        // Razão de sedimentação
+        const tSettling = vTerm > 0 ? hEmulsion / vTerm : 1e6;
         const settlingRatio = tResidence / tSettling;
         const effSettling = 1.0 - Math.exp(-0.8 * settlingRatio);
 
@@ -832,30 +968,63 @@ class FuzzyController {
         return activatedRules;
     }
 
-    // Defuzzificação
+    // Defuzzificação Sugeno de ordem zero (singleton):
+    // Para saídas CATEGÓRICAS (ações), a COA clássica não se aplica — o correto
+    // é AGREGAR a força de activação de cada ação por soma ponderada pela
+    // prioridade (peso = 1/priority ⇒ priority=1 pesa 1.0, priority=2 pesa 0.5…),
+    // devolvendo a acção com maior massa de evidência. A confiança é
+    //      conf = Σ(w·μ)_vencedor / Σ(w·μ)_total   ∈ [0,1]
+    // Isto é o Weighted Average Sugeno singleton (Takagi-Sugeno 1985).
     defuzzify(activatedRules) {
-        if (activatedRules.length === 0) {
+        if (!activatedRules || activatedRules.length === 0) {
             return {
                 action: 'maintain',
                 confidence: 0,
-                description: 'Manter parâmetros atuais'
+                description: 'Manter parâmetros atuais',
+                rule: '—',
+                allRules: [],
+                aggregated: []
             };
         }
 
-        // Ordenar por ativação e prioridade
-        activatedRules.sort((a, b) => {
-            if (a.priority !== b.priority) return a.priority - b.priority;
-            return b.activation - a.activation;
+        // Peso por prioridade (prioridade mais baixa = mais importante)
+        const weightOf = (r) => 1.0 / Math.max(1, (r.priority ?? 1));
+
+        // Agregar strength por action
+        const massByAction = new Map(); // action -> { mass, rules: [] }
+        let totalMass = 0;
+        activatedRules.forEach(r => {
+            const w = weightOf(r);
+            const m = w * r.activation;
+            totalMass += m;
+            const entry = massByAction.get(r.action) || { mass: 0, rules: [] };
+            entry.mass += m;
+            entry.rules.push(r);
+            massByAction.set(r.action, entry);
         });
 
-        const bestRule = activatedRules[0];
+        // Ordenar ações por massa de evidência agregada (descendente)
+        const aggregated = [...massByAction.entries()]
+            .map(([action, { mass, rules }]) => ({
+                action,
+                mass,
+                confidence: totalMass > 0 ? mass / totalMass : 0,
+                rules: rules.sort((a, b) => b.activation - a.activation)
+            }))
+            .sort((a, b) => b.mass - a.mass);
+
+        const winner = aggregated[0];
+        const topRule = winner.rules[0];
 
         return {
-            action: bestRule.action,
-            confidence: bestRule.activation,
-            description: this.getActionDescription(bestRule.action),
-            rule: bestRule.description,
-            allRules: activatedRules
+            action: winner.action,
+            confidence: winner.confidence,
+            description: this.getActionDescription(winner.action),
+            rule: topRule?.description || '—',
+            // allRules: retrocompatibilidade com UI antiga (lista crua ordenada)
+            allRules: [...activatedRules].sort((a, b) => b.activation - a.activation),
+            // Nova estrutura: ranking de acções com massa agregada
+            aggregated
         };
     }
 
@@ -934,6 +1103,61 @@ const separatorModel = new SeparatorModel();
 const optimizer = new OptimizationAlgorithms();
 const nnPredictor = new NeuralNetworkPredictor();
 const fuzzyController = new FuzzyController();
+
+// ----------------------------------------------------------------------------
+// VALIDAÇÃO DE PARÂMETROS — invariantes físicos de domínio
+// ----------------------------------------------------------------------------
+function validateParams(p) {
+    const errors = [];
+    const finite = (v) => Number.isFinite(v);
+
+    if (!finite(p.flowRate)    || p.flowRate <= 0)                  errors.push('Vazão deve ser finita e > 0');
+    if (!finite(p.pressure)    || p.pressure <= 0)                  errors.push('Pressão deve ser finita e > 0');
+    if (!finite(p.temperature) || p.temperature <= -273.15)         errors.push('Temperatura abaixo do zero absoluto');
+    if (!finite(p.waterCut)    || p.waterCut < 0 || p.waterCut > 100) errors.push('Corte de água deve estar em [0, 100] %');
+    if (!finite(p.gor)         || p.gor < 0)                        errors.push('GOR não pode ser negativo');
+    if (!finite(p.viscosity)   || p.viscosity <= 0)                 errors.push('Viscosidade deve ser > 0');
+
+    if (!finite(p.rhoOil)   || p.rhoOil   <= 0) errors.push('ρ_óleo deve ser > 0');
+    if (!finite(p.rhoWater) || p.rhoWater <= 0) errors.push('ρ_água deve ser > 0');
+    if (!finite(p.rhoGas)   || p.rhoGas   <= 0) errors.push('ρ_gás deve ser > 0');
+
+    // Invariantes físicos cruzados
+    if (finite(p.rhoOil) && finite(p.rhoWater) && p.rhoOil >= p.rhoWater)
+        errors.push('ρ_óleo deve ser < ρ_água (caso contrário O-A inverte)');
+    if (finite(p.rhoGas) && finite(p.rhoOil) && p.rhoGas >= p.rhoOil)
+        errors.push('ρ_gás deve ser < ρ_óleo');
+
+    return errors;
+}
+
+// Exibe/esconde banner de validação no topo do dashboard
+function renderValidationBanner(errors) {
+    let banner = document.getElementById('validationBanner');
+    if (errors.length === 0) {
+        if (banner) banner.remove();
+        return;
+    }
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'validationBanner';
+        banner.className = 'validation-banner';
+        const main = document.querySelector('.main-content');
+        if (main) main.prepend(banner);
+    }
+    banner.innerHTML = `
+        <div class="validation-banner-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 9v4"/><path d="M12 17h.01"/>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            </svg>
+        </div>
+        <div class="validation-banner-body">
+            <strong>Parâmetros fisicamente inconsistentes — resultados podem ser inválidos</strong>
+            <ul>${errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
+        </div>
+    `;
+}
 
 // Função para trocar de aba
 function switchTab(tabName) {
@@ -1235,6 +1459,11 @@ function stampStatusCalc() {
 
 // Atualizar dashboard
 function updateDashboard() {
+    // Validação física antes de calcular — avisa o utilizador se os parâmetros
+    // violam invariantes de domínio (ρ_óleo<ρ_água, P>0, etc.).
+    const errs = validateParams(currentParams);
+    renderValidationBanner(errs);
+
     const activeTab = document.querySelector('.tab.active');
     if (activeTab) {
         const tabName = activeTab.textContent.includes('Dashboard') ? 'dashboard' :
@@ -1506,63 +1735,227 @@ function renderPerformanceRadarChart(effGL, effOA, energy) {
 
 // Renderizar Modelagem Matemática
 function renderModeling() {
+    const p = currentParams;
+    const T_K = p.temperature + 273.15;
+
+    // ---- Evaluations ao vivo com params actuais -----------------------
+    // (1) Arraste
+    const muOil_Pa_s = p.viscosity * 1e-3;
+    const d50 = 500e-6; // gota padrão O-A
+    const vTerm = separatorModel.terminalVelocity(d50, p.rhoWater, p.rhoOil, muOil_Pa_s);
+    const Re_d = Math.abs(p.rhoOil * vTerm * d50 / muOil_Pa_s);
+    const Cd = separatorModel.cdMorsiAlexander(Re_d);
+    const regime = separatorModel.particleRegime(d50, p.rhoWater, p.rhoOil, muOil_Pa_s);
+    const regimeLabel = { stokes: 'Stokes · Re<1', intermediate: 'Intermediário · 1<Re<10³', newton: 'Newton · Re>10³' }[regime];
+    const regimeBadge = regime === 'stokes' ? 'ok' : (regime === 'intermediate' ? 'info' : 'warn');
+
+    // (2) Souders-Brown
+    const K_act = separatorModel.soudersBrownK(p.pressure, 'mesh');
+    const rhoGas_real = separatorModel.gasDensityRK(p.pressure, T_K);
+    const vCrit = separatorModel.soudersBrownVelocity(p.rhoOil, rhoGas_real, K_act);
+
+    // (3) EoS Redlich-Kwong
+    const Z = separatorModel.zFactorRK(p.pressure, T_K);
+
+    // (4) Weber crítico
+    const areaOA = 1.13;
+    const vSup = (p.flowRate / 86400) / areaOA;
+    const dMax = separatorModel.maxStableDroplet(vSup, p.rhoOil);
+
+    // ---- Helpers HTML -----------------------------------------------
+    const fmt = (v, d = 2) => Number.isFinite(v) ? Number(v).toLocaleString('pt-PT', { maximumFractionDigits: d, minimumFractionDigits: d }) : '—';
+    const expo = (v, d = 2) => Number.isFinite(v) ? Number(v).toExponential(d) : '—';
     const html = `
-        <div class="card">
-            <h3>Equações Fundamentais do Processo</h3>
-            <div class="formulas-grid">
-                <div class="formula-card">
-                    <strong>Lei de Stokes</strong>
-                    <div class="formula">v = 2gr²(ρₚ - ρf)/(9μ)</div>
-                </div>
-                <div class="formula-card">
-                    <strong>Souders-Brown</strong>
-                    <div class="formula">vg = K√((ρₗ - ρg)/ρg)</div>
-                </div>
-                <div class="formula-card">
-                    <strong>Eficiência Total</strong>
-                    <div class="formula">η = (Qout,sep/Qin,total) × 100%</div>
-                </div>
-                <div class="formula-card">
-                    <strong>Tempo de Residência</strong>
-                    <div class="formula">τ = V/Q</div>
-                </div>
-                <div class="formula-card">
-                    <strong>Balanço de Massa</strong>
-                    <div class="formula">∂(αᵢρᵢ)/∂t + ∇·(αᵢρᵢvᵢ) = Γᵢ</div>
-                </div>
-                <div class="formula-card">
-                    <strong>Critério de Arraste</strong>
-                    <div class="formula">CD = 24/Re (Re < 1)</div>
-                </div>
+        <header class="page-head">
+            <div>
+                <h2>Modelagem matemática</h2>
+                <p>Equações físicas que governam o separador tri-fásico. Cada modelo mostra a equação, a legenda de variáveis, o intervalo de validade e o valor avaliado com os parâmetros operacionais actuais.</p>
             </div>
-        </div>
-
-        <div class="calculator-grid">
-            <div class="card">
-                <h4>Lei de Stokes - Velocidade Terminal</h4>
-                <div class="input-group">
-                    <label>Raio da gota (μm)</label>
-                    <input type="number" id="dropRadius" value="100" min="10" max="1000">
-                </div>
-                <button onclick="calculateStokes()">Calcular</button>
-                <div id="stokesResult"></div>
+            <div class="page-meta">
+                <span>4 modelos · 9 variáveis</span>
+                <strong>${fmt(Re_d, 2)}</strong>
+                <span>Re da gota (actual)</span>
             </div>
+        </header>
 
-            <div class="card">
-                <h4>Correlação de Souders-Brown</h4>
-                <button onclick="calculateSoudersBrown()">Calcular</button>
-                <div id="soudersBrownResult"></div>
+        <!-- SECÇÃO 1 · ARRASTE -->
+        <section class="section">
+            <div class="section-head">
+                <span class="section-num">01</span>
+                <h3>Arraste gravitacional de partículas</h3>
+                <span class="section-caption">sedimentação de gotas em meio contínuo</span>
             </div>
-        </div>
+            <div class="cards-row">
 
-        <div class="card">
-            <div id="stokesChart"></div>
-        </div>
+                <article class="model-card">
+                    <div class="model-card__head">
+                        <div class="model-card__title">Lei de Stokes
+                            <small>Velocidade terminal em regime laminar</small>
+                        </div>
+                        <span class="model-card__badge ${Re_d < 1 ? 'ok' : 'warn'}">${Re_d < 1 ? 'válida' : 'fora do regime'}</span>
+                    </div>
+                    <div class="model-card__eq">v<span class="sub">t</span> = (2 g r<span class="sup">2</span> · Δρ) / (9 μ)</div>
+                    <div class="legend">
+                        <span class="sym">v<sub>t</sub></span><span>velocidade terminal da gota</span><span class="unit">m/s</span>
+                        <span class="sym">g</span><span>gravidade</span><span class="unit">9,81 m/s²</span>
+                        <span class="sym">r</span><span>raio da gota</span><span class="unit">m</span>
+                        <span class="sym">Δρ</span><span>diferença de densidades (dispersa − contínua)</span><span class="unit">kg/m³</span>
+                        <span class="sym">μ</span><span>viscosidade dinâmica da fase contínua</span><span class="unit">Pa·s</span>
+                    </div>
+                    <div class="live-out">
+                        <span class="live-label">v<sub>t</sub> · d=500 μm, actual</span>
+                        <span class="live-value">${fmt(vTerm * 1000, 3)}<small>mm/s</small></span>
+                    </div>
+                    <div class="model-card__foot">
+                        <span>Validade: Re &lt; 1 · esferas rígidas</span>
+                        <span class="ref">Stokes 1851</span>
+                    </div>
+                </article>
+
+                <article class="model-card">
+                    <div class="model-card__head">
+                        <div class="model-card__title">Coef. arraste · Morsi-Alexander
+                            <small>C<sub>D</sub>(Re) piecewise para qualquer regime</small>
+                        </div>
+                        <span class="model-card__badge ${regimeBadge}">${regimeLabel}</span>
+                    </div>
+                    <div class="model-card__eq">C<span class="sub">D</span>(Re) = a/Re + b/Re<span class="sup">2</span> + c</div>
+                    <div class="legend">
+                        <span class="sym">Re</span><span>Reynolds da partícula ρ·v·d/μ</span><span class="unit">—</span>
+                        <span class="sym">a, b, c</span><span>coeficientes por faixa de Re (7 faixas)</span><span class="unit">—</span>
+                    </div>
+                    <div class="live-grid">
+                        <div class="live-out"><span class="live-label">Re</span><span class="live-value">${fmt(Re_d, 2)}</span></div>
+                        <div class="live-out"><span class="live-label">C<sub>D</sub></span><span class="live-value">${fmt(Cd, 2)}</span></div>
+                    </div>
+                    <div class="model-card__foot">
+                        <span>Validade: 0 &lt; Re &lt; 5·10⁴</span>
+                        <span class="ref">Morsi &amp; Alexander 1972</span>
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+        <!-- SECÇÃO 2 · CAPACIDADE DE GÁS -->
+        <section class="section">
+            <div class="section-head">
+                <span class="section-num">02</span>
+                <h3>Capacidade de separação gás-líquido</h3>
+                <span class="section-caption">velocidade crítica antes de arraste de gotas</span>
+            </div>
+            <div class="cards-row">
+
+                <article class="model-card">
+                    <div class="model-card__head">
+                        <div class="model-card__title">Souders-Brown
+                            <small>Velocidade crítica do gás (anti-arraste)</small>
+                        </div>
+                        <span class="model-card__badge info">GPSA</span>
+                    </div>
+                    <div class="model-card__eq">v<span class="sub">g,crit</span> = K · √((ρ<span class="sub">l</span> − ρ<span class="sub">g</span>) / ρ<span class="sub">g</span>)</div>
+                    <div class="legend">
+                        <span class="sym">K</span><span>factor tabelado GPSA, varia com P e tipo de demister</span><span class="unit">m/s</span>
+                        <span class="sym">ρ<sub>l</sub>, ρ<sub>g</sub></span><span>densidade do líquido e do gás nas condições de operação</span><span class="unit">kg/m³</span>
+                    </div>
+                    <div class="live-grid">
+                        <div class="live-out"><span class="live-label">K @ ${fmt(p.pressure,1)} bar</span><span class="live-value">${fmt(K_act, 3)}</span></div>
+                        <div class="live-out"><span class="live-label">v<sub>g,crit</sub></span><span class="live-value">${fmt(vCrit, 2)}<small>m/s</small></span></div>
+                    </div>
+                    <div class="model-card__foot">
+                        <span>Demister: wire mesh (default)</span>
+                        <span class="ref">GPSA EDB §7</span>
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+        <!-- SECÇÃO 3 · PROPRIEDADES TERMODINÂMICAS -->
+        <section class="section">
+            <div class="section-head">
+                <span class="section-num">03</span>
+                <h3>Equação de estado do gás</h3>
+                <span class="section-caption">ρ-gás real para condições de pressão/temperatura</span>
+            </div>
+            <div class="cards-row">
+
+                <article class="model-card">
+                    <div class="model-card__head">
+                        <div class="model-card__title">Redlich-Kwong
+                            <small>EoS cúbica · desvio da idealidade (Z)</small>
+                        </div>
+                        <span class="model-card__badge ${Z > 0.9 ? 'ok' : 'info'}">Z = ${fmt(Z, 3)}</span>
+                    </div>
+                    <div class="model-card__eq">P = RT/(v−b) − a / (T<span class="sup">0,5</span> · v(v+b))</div>
+                    <div class="legend">
+                        <span class="sym">Z</span><span>factor de compressibilidade (1 = gás ideal)</span><span class="unit">—</span>
+                        <span class="sym">a, b</span><span>parâmetros derivados de T<sub>c</sub>, P<sub>c</sub></span><span class="unit">—</span>
+                        <span class="sym">T<sub>c</sub>, P<sub>c</sub></span><span>temperatura e pressão críticas do gás</span><span class="unit">K, bar</span>
+                    </div>
+                    <div class="live-grid">
+                        <div class="live-out"><span class="live-label">Z</span><span class="live-value">${fmt(Z, 3)}</span></div>
+                        <div class="live-out"><span class="live-label">ρ<sub>g</sub> real</span><span class="live-value">${fmt(rhoGas_real, 2)}<small>kg/m³</small></span></div>
+                    </div>
+                    <div class="model-card__foot">
+                        <span>T<sub>c</sub>=190,6 K · P<sub>c</sub>=46 bar (CH₄-rich)</span>
+                        <span class="ref">Redlich &amp; Kwong 1949</span>
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+        <!-- SECÇÃO 4 · INSTABILIDADES -->
+        <section class="section">
+            <div class="section-head">
+                <span class="section-num">04</span>
+                <h3>Instabilidades e fragmentação</h3>
+                <span class="section-caption">critério Weber para quebra de gotas</span>
+            </div>
+            <div class="cards-row">
+
+                <article class="model-card">
+                    <div class="model-card__head">
+                        <div class="model-card__title">Weber crítico (Hinze)
+                            <small>Diâmetro máximo estável sob cisalhamento</small>
+                        </div>
+                        <span class="model-card__badge info">We<sub>c</sub> ≈ 12</span>
+                    </div>
+                    <div class="model-card__eq">d<span class="sub">max</span> = σ · We<span class="sub">c</span> / (ρ<span class="sub">c</span> · v<span class="sup">2</span>)</div>
+                    <div class="legend">
+                        <span class="sym">σ</span><span>tensão interfacial</span><span class="unit">N/m</span>
+                        <span class="sym">v</span><span>velocidade superficial da fase contínua</span><span class="unit">m/s</span>
+                        <span class="sym">ρ<sub>c</sub></span><span>densidade da fase contínua</span><span class="unit">kg/m³</span>
+                    </div>
+                    <div class="live-grid">
+                        <div class="live-out"><span class="live-label">v<sub>sup</sub></span><span class="live-value">${fmt(vSup, 4)}<small>m/s</small></span></div>
+                        <div class="live-out"><span class="live-label">d<sub>max</sub></span><span class="live-value">${Number.isFinite(dMax) && dMax < 0.01 ? fmt(dMax * 1e6, 0) : '—'}<small>μm</small></span></div>
+                    </div>
+                    <div class="model-card__foot">
+                        <span>σ assumida: 0,025 N/m (óleo-água)</span>
+                        <span class="ref">Hinze 1955</span>
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+        <!-- SECÇÃO 5 · GRÁFICO -->
+        <section class="section">
+            <div class="section-head">
+                <span class="section-num">05</span>
+                <h3>Velocidade terminal vs tamanho de gota</h3>
+                <span class="section-caption">comparação Stokes puro × solver iterativo Morsi-Alexander</span>
+            </div>
+            <div class="card" style="padding: 12px;">
+                <div id="stokesChart" style="min-height: 380px;"></div>
+            </div>
+        </section>
     `;
 
     document.getElementById('modeling').innerHTML = html;
-    calculateStokes();
-    calculateSoudersBrown();
+    renderStokesChart();
 }
 
 function calculateStokes() {
@@ -1617,35 +2010,60 @@ function renderStokesChart() {
     const { viscosity, rhoOil, rhoWater } = currentParams;
     const muOil = viscosity * 1e-3;
 
-    const dropSizes = [];
-    const velocities = [];
+    // Varrer tamanhos de gota de 10 μm a 5000 μm em escala logarítmica.
+    // Comparar Stokes puro (fórmula fechada) × solver iterativo Morsi-Alexander.
+    const diams_um = [];
+    const vStokes_mm_s = [];
+    const vMorsi_mm_s = [];
+    const Re_arr = [];
 
-    for (let i = 10; i <= 1000; i += 10) {
-        dropSizes.push(i);
-        const radius = i * 1e-6;
-        const v = separatorModel.stokesVelocity(radius, rhoWater, rhoOil, muOil);
-        velocities.push(v * 1000); // mm/s
+    for (let i = 10; i <= 5000; i = (i < 100 ? i + 5 : (i < 1000 ? i + 25 : i + 100))) {
+        const d = i * 1e-6; // m
+        const vS = separatorModel.stokesVelocity(d/2, rhoWater, rhoOil, muOil); // Lei de Stokes pura
+        const vM = separatorModel.terminalVelocity(d, rhoWater, rhoOil, muOil); // Morsi-Alexander iterativo
+        const Re = Math.abs(rhoOil * vM * d / muOil);
+        diams_um.push(i);
+        vStokes_mm_s.push(vS * 1000);
+        vMorsi_mm_s.push(vM * 1000);
+        Re_arr.push(Re);
     }
 
-    const trace = {
-        x: dropSizes,
-        y: velocities,
-        mode: 'lines',
-        name: '📉 Velocidade de Sedimentação',
-        line: { color: '#d62728', width: 3 }
+    const traceStokes = {
+        x: diams_um, y: vStokes_mm_s, mode: 'lines',
+        name: 'Stokes (fórmula fechada)',
+        line: { color: '#a78bfa', width: 1.8, dash: 'dash' },
+        hovertemplate: 'd=%{x} μm<br>v=%{y:.2f} mm/s (Stokes)<extra></extra>'
     };
+    const traceMorsi = {
+        x: diams_um, y: vMorsi_mm_s, mode: 'lines',
+        name: 'Morsi-Alexander (iterativo)',
+        line: { color: '#06b6d4', width: 2.4 },
+        hovertemplate: 'd=%{x} μm<br>v=%{y:.2f} mm/s (iterativo)<extra></extra>'
+    };
+    // Marcar a faixa de validade de Stokes (Re<1): encontrar o d onde Re cruza 1
+    const idxRe1 = Re_arr.findIndex(r => r > 1);
+    const dRe1 = idxRe1 > 0 ? diams_um[idxRe1] : null;
+
+    const shapes = dRe1 ? [{
+        type: 'line', x0: dRe1, x1: dRe1, y0: 0, y1: 1, yref: 'paper',
+        line: { color: '#f59e0b', width: 1.5, dash: 'dot' }
+    }] : [];
+    const annotations = dRe1 ? [{
+        x: dRe1, y: 1, yref: 'paper', text: `Re=1 @ ${dRe1} μm`,
+        showarrow: false, xanchor: 'left', yanchor: 'top',
+        font: { color: '#f59e0b', size: 10 }, xshift: 4
+    }] : [];
 
     const layout = {
-        title: 'Lei de Stokes - Análise de Separabilidade',
-        xaxis: {
-            title: 'Diâmetro da Gota (μm)',
-            type: 'log'
-        },
-        yaxis: { title: 'Velocidade de Sedimentação (mm/s)' },
-        height: 400
+        title: 'Velocidade terminal vs diâmetro de gota',
+        xaxis: { title: 'Diâmetro da gota (μm)', type: 'log' },
+        yaxis: { title: 'Velocidade de sedimentação (mm/s)', type: 'log' },
+        height: 380,
+        margin: { t: 48, r: 24, b: 56, l: 64 },
+        shapes, annotations
     };
 
-    Plotly.newPlot('stokesChart', [trace], layout, {responsive: true});
+    Plotly.newPlot('stokesChart', [traceStokes, traceMorsi], layout);
 }
 
 // Renderizar Redes Neurais
