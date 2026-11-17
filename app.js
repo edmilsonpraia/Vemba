@@ -1,6 +1,70 @@
 // ============================================================================
-// SISTEMA INTELIGENTE DE OTIMIZAÇÃO DE SEPARADORES - VERSÃO JAVASCRIPT
+// VPO — Vemba Process Optimizer · JavaScript engine
 // ============================================================================
+
+// ----------------------------------------------------------------------------
+// TEMA GLOBAL DE GRÁFICOS (Plotly dark industrial)
+// Aplica paleta, grid sutil e fundos transparentes em TODOS os gráficos
+// sem precisar editar cada call site.
+// ----------------------------------------------------------------------------
+const VPO_PLOT = {
+    palette: ['#06b6d4', '#a78bfa', '#f59e0b', '#10b981', '#f472b6', '#60a5fa', '#fb923c', '#2dd4bf'],
+    font:    { family: "Inter, -apple-system, Segoe UI, sans-serif", size: 12, color: '#cbd5e1' },
+    titleFn: 'Inter, -apple-system, Segoe UI, sans-serif',
+    axis: {
+        gridcolor: 'rgba(148,163,184,0.12)',
+        zerolinecolor: 'rgba(148,163,184,0.25)',
+        linecolor: 'rgba(148,163,184,0.25)',
+        tickcolor: 'rgba(148,163,184,0.4)',
+        tickfont: { color: '#94a3b8', size: 11 },
+        titlefont: { color: '#cbd5e1', size: 12 }
+    },
+    paper: 'rgba(0,0,0,0)',
+    plot:  'rgba(0,0,0,0)'
+};
+
+function vpoApplyTheme(layout = {}) {
+    const L = { ...layout };
+    L.paper_bgcolor = L.paper_bgcolor ?? VPO_PLOT.paper;
+    L.plot_bgcolor  = L.plot_bgcolor  ?? VPO_PLOT.plot;
+    L.font = { ...VPO_PLOT.font, ...(L.font || {}) };
+    L.colorway = L.colorway || VPO_PLOT.palette;
+    L.margin = L.margin || { t: 48, r: 24, b: 48, l: 56 };
+    if (typeof L.title === 'string') {
+        L.title = { text: L.title, font: { family: VPO_PLOT.titleFn, size: 14, color: '#f1f5f9' }, x: 0.02, xanchor: 'left' };
+    } else if (L.title && typeof L.title === 'object') {
+        L.title = { x: 0.02, xanchor: 'left', ...L.title, font: { family: VPO_PLOT.titleFn, size: 14, color: '#f1f5f9', ...(L.title.font || {}) } };
+    }
+    // merge para eixos
+    ['xaxis','yaxis','xaxis2','yaxis2','xaxis3','yaxis3'].forEach(k => {
+        if (L[k] !== undefined) L[k] = { ...VPO_PLOT.axis, ...L[k] };
+    });
+    // Radar (polar)
+    if (L.polar) {
+        L.polar = {
+            bgcolor: 'rgba(0,0,0,0)',
+            radialaxis: { gridcolor: 'rgba(148,163,184,0.15)', tickfont: { color: '#94a3b8', size: 10 }, linecolor: 'rgba(148,163,184,0.3)' },
+            angularaxis: { gridcolor: 'rgba(148,163,184,0.15)', tickfont: { color: '#cbd5e1', size: 11 }, linecolor: 'rgba(148,163,184,0.3)' },
+            ...L.polar
+        };
+    }
+    // Legenda
+    L.legend = { orientation: 'h', y: -0.18, x: 0, bgcolor: 'rgba(0,0,0,0)', font: { color: '#cbd5e1', size: 11 }, ...(L.legend || {}) };
+    // Hover
+    L.hoverlabel = { bgcolor: '#111a2c', bordercolor: '#2a3756', font: { color: '#f1f5f9', family: VPO_PLOT.font.family, size: 12 }, ...(L.hoverlabel || {}) };
+    return L;
+}
+
+// Monkey-patch Plotly: todos os gráficos herdam o tema VPO automaticamente.
+if (typeof Plotly !== 'undefined' && !Plotly.__vpoPatched) {
+    const _newPlot = Plotly.newPlot.bind(Plotly);
+    const _react   = Plotly.react  ? Plotly.react.bind(Plotly)  : null;
+    Plotly.newPlot = (gd, data, layout, config) =>
+        _newPlot(gd, data, vpoApplyTheme(layout || {}), { responsive: true, displaylogo: false, ...(config || {}) });
+    if (_react) Plotly.react = (gd, data, layout, config) =>
+        _react(gd, data, vpoApplyTheme(layout || {}), { responsive: true, displaylogo: false, ...(config || {}) });
+    Plotly.__vpoPatched = true;
+}
 
 // Classe para modelagem matemática do separador
 class SeparatorModel {
@@ -902,29 +966,271 @@ function toggleSidebar() {
     overlay.classList.toggle('active');
 }
 
-// Atualizar valores dos sliders
-function setupSliders() {
-    const sliders = ['flowRate', 'pressure', 'temperature', 'waterCut', 'gor', 'viscosity'];
+// ----------------------------------------------------------------------------
+// SIDEBAR · Parâmetros, cenários, deltas, zonas de saúde, click-to-edit, rail
+// ----------------------------------------------------------------------------
 
-    sliders.forEach(sliderId => {
-        const slider = document.getElementById(sliderId);
-        const valueDisplay = document.getElementById(sliderId + 'Value');
+// Formatação numérica consistente com locale PT
+const NUM_FMT_INT = new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 0 });
+const NUM_FMT_1D  = new Intl.NumberFormat('pt-PT', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+// Quantas casas decimais para cada parâmetro na UI
+const PARAM_DECIMALS = { pressure: 1, rhoGas: 1 };
+
+function formatParamValue(id, raw) {
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return String(raw);
+    const d = PARAM_DECIMALS[id] ?? 0;
+    const fmt = d > 0
+        ? new Intl.NumberFormat('pt-PT', { minimumFractionDigits: d, maximumFractionDigits: d })
+        : NUM_FMT_INT;
+    return fmt.format(v);
+}
+function formatDelta(id, raw) {
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return String(raw);
+    const sign = v > 0 ? '+' : (v < 0 ? '−' : '±');
+    const d = PARAM_DECIMALS[id] ?? 0;
+    const mag = d > 0 ? Math.abs(v).toFixed(d) : Math.round(Math.abs(v));
+    return v === 0 ? '±0' : `${sign}${mag}`;
+}
+
+// Debounce simples para evitar re-render do Plotly a cada tick
+function debounce(fn, wait = 120) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+}
+const debouncedUpdate = debounce(updateDashboard, 150);
+
+// Pinta o progresso visual do range (variável CSS --pct)
+function paintRange(slider) {
+    const min = parseFloat(slider.min), max = parseFloat(slider.max);
+    const v = parseFloat(slider.value);
+    const pct = max > min ? ((v - min) / (max - min)) * 100 : 50;
+    slider.style.setProperty('--pct', pct + '%');
+}
+
+// Atualizar valor do slider sem apagar a sub-tag .unit
+function writeSliderValue(id, raw) {
+    const el = document.getElementById(id + 'Value');
+    if (!el) return;
+    const unit = el.querySelector('.unit');
+    el.textContent = formatParamValue(id, raw);
+    if (unit) el.appendChild(unit);
+}
+
+// Valores de base (usados pelo Reset e pelo delta vs baseline)
+const BASELINE_PARAMS = {
+    flowRate: 1250, pressure: 11.3, temperature: 62,
+    waterCut: 42, gor: 95, viscosity: 15,
+    rhoOil: 870, rhoWater: 1020, rhoGas: 1.2
+};
+
+// Cenários operacionais pré-definidos
+const SCENARIOS = {
+    baseline:    { ...BASELINE_PARAMS },
+    highFlow:    { ...BASELINE_PARAMS, flowRate: 2000, pressure: 12.5, gor: 120 },
+    lowPressure: { ...BASELINE_PARAMS, pressure: 9.2, temperature: 58 },
+    highWaterCut:{ ...BASELINE_PARAMS, waterCut: 70, viscosity: 20, flowRate: 1500 }
+};
+
+// Zonas operacionais de saúde (ok / warn / crit)
+// Fora do range crítico → "crit"; dentro de "warn" bands → "warn"; dentro de "ok" band → "ok"
+const HEALTH_ZONES = {
+    flowRate:    { ok: [800, 1700],   warn: [400, 2100]  },
+    pressure:    { ok: [10.0, 13.0],  warn: [9.0, 14.2]  },
+    temperature: { ok: [55, 72],      warn: [48, 80]     },
+    waterCut:    { ok: [20, 55],      warn: [15, 68]     },
+    gor:         { ok: [70, 130],     warn: [50, 160]    },
+    viscosity:   { ok: [12, 20],      warn: [10, 26]     },
+    rhoOil:      { ok: [840, 900],    warn: [820, 930]   },
+    rhoWater:    { ok: [1005, 1050],  warn: [1000, 1080] },
+    rhoGas:      { ok: [1.0, 1.5],    warn: [0.8, 1.8]   }
+};
+
+function healthClass(id, v) {
+    const z = HEALTH_ZONES[id];
+    if (!z) return 'ok';
+    if (v >= z.ok[0]   && v <= z.ok[1])   return 'ok';
+    if (v >= z.warn[0] && v <= z.warn[1]) return 'warn';
+    return 'crit';
+}
+
+// Mapas id → elemento dot/delta (cache pequeno)
+function _hEl(id) { return document.getElementById('h' + id.charAt(0).toUpperCase() + id.slice(1)); }
+function _dEl(id) { return document.getElementById('d' + id.charAt(0).toUpperCase() + id.slice(1)); }
+
+function updateHealthDot(id, v) {
+    const el = _hEl(id);
+    if (!el) return;
+    el.classList.remove('ok','warn','crit');
+    el.classList.add(healthClass(id, v));
+}
+
+function updateDeltaChip(id, v) {
+    const el = _dEl(id);
+    if (!el) return;
+    const base = BASELINE_PARAMS[id];
+    const d = v - base;
+    el.textContent = formatDelta(id, d);
+    el.classList.toggle('changed', Math.abs(d) > 1e-9);
+}
+
+// Contadores de secção (quantos alterados)
+const SECTION_PARAMS = {
+    process: ['flowRate','pressure','temperature','waterCut','gor','viscosity'],
+    fluids:  ['rhoOil','rhoWater','rhoGas']
+};
+function refreshSectionCounters() {
+    Object.entries(SECTION_PARAMS).forEach(([section, ids]) => {
+        const changed = ids.filter(id => Math.abs(currentParams[id] - BASELINE_PARAMS[id]) > 1e-9).length;
+        const node = document.querySelector(`[data-counter="${section}"]`);
+        if (node) node.textContent = changed ? `${ids.length} · ${changed} alterados` : `${ids.length}`;
+        const sec = node ? node.closest('.sidebar-section') : null;
+        if (sec) sec.classList.toggle('has-mods', changed > 0);
+    });
+}
+
+// Detectar se os params atuais batem num preset conhecido e selecionar no dropdown
+function syncScenarioSelector() {
+    const sel = document.getElementById('scenarioSelect');
+    if (!sel) return;
+    const match = Object.entries(SCENARIOS).find(([, preset]) =>
+        Object.keys(preset).every(k => Math.abs(currentParams[k] - preset[k]) < 1e-6));
+    sel.value = match ? match[0] : 'custom';
+    // reativar "Personalizado" só quando aplicável
+    const customOpt = sel.querySelector('option[value="custom"]');
+    if (customOpt) customOpt.disabled = !!match;
+}
+
+// Aplicar um cenário inteiro
+function applyScenario(name) {
+    const preset = SCENARIOS[name];
+    if (!preset) return;
+    Object.entries(preset).forEach(([k, v]) => setParamValue(k, v, { silent: true }));
+    updateDashboard();
+    refreshSectionCounters();
+    syncScenarioSelector();
+}
+
+// Define o valor de um parâmetro em todos os lados (slider, chip, delta, health)
+function setParamValue(id, v, { silent = false } = {}) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    v = clampToSlider(el, v);
+    el.value = v;
+    currentParams[id] = v;
+    if (el.type === 'range') {
+        paintRange(el);
+        writeSliderValue(id, v);
+    }
+    updateHealthDot(id, v);
+    updateDeltaChip(id, v);
+    if (!silent) {
+        refreshSectionCounters();
+        syncScenarioSelector();
+    }
+}
+
+function clampToSlider(el, v) {
+    const min = parseFloat(el.min), max = parseFloat(el.max);
+    if (Number.isFinite(min) && v < min) v = min;
+    if (Number.isFinite(max) && v > max) v = max;
+    return v;
+}
+
+const ALL_PARAMS = ['flowRate','pressure','temperature','waterCut','gor','viscosity','rhoOil','rhoWater','rhoGas'];
+
+function setupSliders() {
+    ALL_PARAMS.forEach(id => {
+        const slider = document.getElementById(id);
+        if (!slider) return;
+        // Estado inicial
+        paintRange(slider);
+        writeSliderValue(id, slider.value);
+        updateHealthDot(id, parseFloat(slider.value));
+        updateDeltaChip(id, parseFloat(slider.value));
 
         slider.addEventListener('input', function() {
-            valueDisplay.textContent = this.value;
-            currentParams[sliderId] = parseFloat(this.value);
-            updateDashboard();
+            const v = parseFloat(this.value);
+            if (!Number.isFinite(v)) return;
+            currentParams[id] = v;
+            paintRange(this);
+            writeSliderValue(id, v);
+            updateHealthDot(id, v);
+            updateDeltaChip(id, v);
+            refreshSectionCounters();
+            syncScenarioSelector();
+            debouncedUpdate();
         });
+
+        // Click-to-edit: duplo-clique no valor abre um input editável
+        const valueEl = document.getElementById(id + 'Value');
+        if (valueEl) valueEl.addEventListener('dblclick', (e) => openInlineEditor(id, e));
     });
 
-    // Inputs numéricos
-    ['rhoOil', 'rhoWater', 'rhoGas'].forEach(inputId => {
-        const input = document.getElementById(inputId);
-        input.addEventListener('change', function() {
-            currentParams[inputId] = parseFloat(this.value);
+    refreshSectionCounters();
+    syncScenarioSelector();
+}
+
+// Editor inline (duplo-clique no valor)
+function openInlineEditor(id, evt) {
+    evt.stopPropagation();
+    const slider = document.getElementById(id);
+    const valueEl = document.getElementById(id + 'Value');
+    if (!slider || !valueEl) return;
+    const current = parseFloat(slider.value);
+    const step = parseFloat(slider.step) || 1;
+    const original = valueEl.innerHTML;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'input-edit';
+    input.min = slider.min;
+    input.max = slider.max;
+    input.step = step;
+    input.value = current;
+    valueEl.replaceChildren(input);
+    input.focus();
+    input.select();
+
+    const commit = () => {
+        const v = parseFloat(input.value);
+        if (Number.isFinite(v)) {
+            setParamValue(id, v);
             updateDashboard();
-        });
+        } else {
+            valueEl.innerHTML = original;
+        }
+    };
+    const cancel = () => { valueEl.innerHTML = original; };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        else if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', commit); cancel(); }
     });
+}
+
+// Repor todos os parâmetros aos valores de base
+function resetAllParams() {
+    applyScenario('baseline');
+}
+
+// Colapsar/expandir sidebar inteira para rail estreito
+function toggleRail() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('rail');
+}
+
+// Atualizar carimbo do status bar
+function stampStatusCalc() {
+    const el = document.getElementById('statusLastCalc');
+    if (!el) return;
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    el.innerHTML = `Último cálculo · <strong>${hh}:${mm}:${ss}</strong>`;
 }
 
 // Atualizar dashboard
@@ -941,6 +1247,7 @@ function updateDashboard() {
                        activeTab.textContent.includes('Assistente') ? 'assistant' : 'calculator';
 
         renderTabContent(tabName);
+        stampStatusCalc();
     }
 }
 
@@ -993,37 +1300,38 @@ function renderDashboard() {
     const deltaOA = ((effOA - 0.89) * 100);
     const deltaEnergy = (energy - 2.4);
 
+    const fmtMoney = new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 0 }).format(Math.abs(efficiencyGain));
     const html = `
         <div class="metrics-grid">
             <div class="metric-card">
-                <div class="metric-label">Eficiência G-L</div>
-                <div class="metric-value">${(effGL * 100).toFixed(1)}%</div>
+                <div class="metric-label">Eficiência G-L <span class="metric-ref">vs 95% meta</span></div>
+                <div class="metric-value">${(effGL * 100).toFixed(1)}<span class="metric-unit">%</span></div>
                 <div class="metric-delta ${deltaGL >= 0 ? 'positive' : 'negative'}">
-                    ${deltaGL >= 0 ? '↑' : '↓'} ${Math.abs(deltaGL).toFixed(1)}%
+                    <span class="arrow">${deltaGL >= 0 ? '▲' : '▼'}</span> ${Math.abs(deltaGL).toFixed(1)} pp
                 </div>
             </div>
 
             <div class="metric-card">
-                <div class="metric-label">Eficiência O-A</div>
-                <div class="metric-value">${(effOA * 100).toFixed(1)}%</div>
+                <div class="metric-label">Eficiência O-A <span class="metric-ref">vs 89% meta</span></div>
+                <div class="metric-value">${(effOA * 100).toFixed(1)}<span class="metric-unit">%</span></div>
                 <div class="metric-delta ${deltaOA >= 0 ? 'positive' : 'negative'}">
-                    ${deltaOA >= 0 ? '↑' : '↓'} ${Math.abs(deltaOA).toFixed(1)}%
+                    <span class="arrow">${deltaOA >= 0 ? '▲' : '▼'}</span> ${Math.abs(deltaOA).toFixed(1)} pp
                 </div>
             </div>
 
             <div class="metric-card">
-                <div class="metric-label">Consumo de Energia</div>
-                <div class="metric-value">${energy.toFixed(2)}</div>
+                <div class="metric-label">Consumo específico <span class="metric-ref">vs 2.40 base</span></div>
+                <div class="metric-value">${energy.toFixed(2)}<span class="metric-unit">MWh/1000 m³</span></div>
                 <div class="metric-delta ${deltaEnergy <= 0 ? 'positive' : 'negative'}">
-                    MWh/1000m³
+                    <span class="arrow">${deltaEnergy <= 0 ? '▼' : '▲'}</span> ${Math.abs(deltaEnergy).toFixed(2)} MWh
                 </div>
             </div>
 
             <div class="metric-card">
-                <div class="metric-label">Impacto Econômico</div>
-                <div class="metric-value">$${Math.abs(efficiencyGain).toFixed(0)}</div>
+                <div class="metric-label">Impacto anual <span class="metric-ref">vs receita base</span></div>
+                <div class="metric-value">${efficiencyGain < 0 ? '−' : ''}${fmtMoney}<span class="metric-unit">USD/ano</span></div>
                 <div class="metric-delta ${efficiencyGain >= 0 ? 'positive' : 'negative'}">
-                    ${efficiencyGain >= 0 ? '↑' : '↓'} ${(Math.abs(efficiencyGain)/baselineRevenue*100).toFixed(1)}% anual
+                    <span class="arrow">${efficiencyGain >= 0 ? '▲' : '▼'}</span> ${(Math.abs(efficiencyGain)/baselineRevenue*100).toFixed(1)}% a.a.
                 </div>
             </div>
         </div>
@@ -1105,65 +1413,37 @@ function renderEfficiencyTrendChart() {
     }
 
     const trace1 = {
-        x: dates,
-        y: efficiencyData,
-        mode: 'lines+markers',
-        name: 'Eficiência Total (%)',
-        line: { color: '#1f77b4', width: 3 },
-        marker: { size: 4 }
+        x: dates, y: efficiencyData, mode: 'lines',
+        name: 'Eficiência total',
+        line: { color: '#06b6d4', width: 2.2, shape: 'spline', smoothing: 0.6 },
+        hovertemplate: '<b>%{x}</b><br>Eficiência: %{y:.1%}<extra></extra>'
     };
-
-    const trace2 = {
-        x: dates,
-        y: upperBound,
-        mode: 'lines',
-        line: { width: 0 },
-        showlegend: false,
-        hoverinfo: 'skip'
-    };
-
+    const trace2 = { x: dates, y: upperBound, mode: 'lines', line: { width: 0 }, showlegend: false, hoverinfo: 'skip' };
     const trace3 = {
-        x: dates,
-        y: lowerBound,
-        mode: 'lines',
-        line: { width: 0 },
-        fill: 'tonexty',
-        fillcolor: 'rgba(31, 119, 180, 0.2)',
-        name: 'Banda de Confiança (±2%)',
-        hoverinfo: 'skip'
+        x: dates, y: lowerBound, mode: 'lines', line: { width: 0 },
+        fill: 'tonexty', fillcolor: 'rgba(6,182,212,0.14)',
+        name: 'Banda de confiança (±2%)', hoverinfo: 'skip'
     };
 
     const layout = {
-        title: 'Tendência de Eficiência ao Longo do Tempo',
-        xaxis: { title: 'Data' },
-        yaxis: {
-            title: 'Eficiência (%)',
-            tickformat: '.1%',
-            range: [0.85, 1.0]
-        },
-        height: 400,
+        title: 'Tendência de eficiência',
+        xaxis: { title: '' },
+        yaxis: { title: 'Eficiência', tickformat: '.0%', range: [0.85, 1.0] },
+        height: 360,
+        margin: { t: 48, r: 24, b: 56, l: 56 },
         shapes: [{
-            type: 'line',
-            x0: dates[0],
-            x1: dates[dates.length - 1],
-            y0: 0.95,
-            y1: 0.95,
-            line: {
-                color: 'red',
-                width: 2,
-                dash: 'dash'
-            }
+            type: 'line', x0: dates[0], x1: dates[dates.length - 1],
+            y0: 0.95, y1: 0.95,
+            line: { color: '#f59e0b', width: 1.5, dash: 'dash' }
         }],
         annotations: [{
-            x: dates[dates.length - 1],
-            y: 0.95,
-            text: 'Meta: 95%',
-            showarrow: false,
-            xanchor: 'left'
+            x: dates[dates.length - 1], y: 0.95,
+            text: 'Meta 95%', showarrow: false, xanchor: 'left', yanchor: 'bottom',
+            font: { color: '#f59e0b', size: 11 }
         }]
     };
 
-    Plotly.newPlot('efficiencyTrendChart', [trace1, trace2, trace3], layout, {responsive: true});
+    Plotly.newPlot('efficiencyTrendChart', [trace1, trace2, trace3], layout);
 }
 
 // Gráfico radar de performance
@@ -1187,19 +1467,19 @@ function renderPerformanceRadarChart(effGL, effOA, energy) {
         r: currentValues,
         theta: categories,
         fill: 'toself',
-        name: '🔵 Atual',
-        line: { color: '#ff7f0e', width: 3 },
-        fillcolor: 'rgba(255, 127, 14, 0.3)'
+        name: 'Atual',
+        line:     { color: '#06b6d4', width: 2 },
+        fillcolor: 'rgba(6,182,212,0.22)',
+        marker:   { size: 6, color: '#06b6d4' }
     };
 
     const trace2 = {
         type: 'scatterpolar',
         r: benchmarkValues,
         theta: categories,
-        fill: 'toself',
-        name: '🟢 Benchmark',
-        line: { color: '#2ca02c', width: 3 },
-        fillcolor: 'rgba(44, 160, 44, 0.2)'
+        name: 'Benchmark',
+        line:     { color: '#a78bfa', width: 1.5 },
+        marker:   { size: 5, color: '#a78bfa' }
     };
 
     const trace3 = {
@@ -1207,21 +1487,21 @@ function renderPerformanceRadarChart(effGL, effOA, energy) {
         r: targetValues,
         theta: categories,
         name: 'Meta',
-        line: { color: '#d62728', width: 2, dash: 'dash' }
+        line:     { color: '#f59e0b', width: 1.5, dash: 'dash' },
+        marker:   { size: 4, color: '#f59e0b' }
     };
 
     const layout = {
         title: 'Performance vs Benchmark vs Meta',
         polar: {
-            radialaxis: {
-                visible: true,
-                range: [0, 100]
-            }
+            radialaxis: { visible: true, range: [0, 100], tickvals: [25, 50, 75, 100], ticksuffix: '' },
+            angularaxis: { rotation: 90, direction: 'clockwise' }
         },
-        height: 400
+        margin: { t: 48, r: 48, b: 60, l: 48 },
+        height: 380
     };
 
-    Plotly.newPlot('performanceRadarChart', [trace1, trace2, trace3], layout, {responsive: true});
+    Plotly.newPlot('performanceRadarChart', [trace1, trace2, trace3], layout);
 }
 
 // Renderizar Modelagem Matemática
@@ -3138,18 +3418,22 @@ function renderAssistant() {
         <div class="chat-container">
             <div class="chat-messages" id="chatMessages">
                 <div class="chat-msg ai">
-                    <div class="chat-avatar"><svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M5 3a3 3 0 1 1 6 0v1a3 3 0 0 1-6 0V3zm3-2a2 2 0 0 0-2 2v1a2 2 0 1 0 4 0V3a2 2 0 0 0-2-2zM4.5 7A2.5 2.5 0 0 0 2 9.5V12a4 4 0 0 0 3.5 3.97V15A3 3 0 0 1 3 12V9.5A1.5 1.5 0 0 1 4.5 8h7A1.5 1.5 0 0 1 13 9.5V12a3 3 0 0 1-2.5 2.96v1A4 4 0 0 0 14 12V9.5A2.5 2.5 0 0 0 11.5 7h-7zM8 11a1 1 0 0 1 1 1v2.5a1 1 0 1 1-2 0V12a1 1 0 0 1 1-1z"/></svg></div>
+                    <div class="chat-avatar" aria-hidden="true">
+                        <svg viewBox="0 0 64 64" width="18" height="18"><path d="M32 10c-9 12-14 20-14 28a14 14 0 0 0 28 0c0-8-5-16-14-28z" fill="#ffffff"/><path d="M22 28 L32 50 L42 28" stroke="#0b1220" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </div>
                     <div class="chat-bubble">
-                        <strong>VPO AI Assistant</strong><br>
-                        A iniciar scan e análise completa dos parâmetros operacionais...
+                        <div class="chat-meta"><strong>Assistente VPO</strong><span class="model-tag">modelo-físico · v0.9</span></div>
+                        A iniciar scan e análise completa dos parâmetros operacionais…
                     </div>
                 </div>
             </div>
             <div class="chat-input-bar">
-                <input type="text" id="chatInput" placeholder="Escreva um comando ou pergunta..." onkeydown="if(event.key==='Enter')sendChatMessage()"/>
-                <button onclick="sendChatMessage()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                </button>
+                <div class="chat-input-shell">
+                    <input type="text" id="chatInput" placeholder="Pergunte ou escreva um comando (ex.: simular, otimizar, dimensionar)…" autocomplete="off" onkeydown="if(event.key==='Enter')sendChatMessage()"/>
+                    <button class="chat-send" onclick="sendChatMessage()" aria-label="Enviar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
     `;
@@ -3158,17 +3442,31 @@ function renderAssistant() {
     setTimeout(() => runFullChatAnalysis({ ...currentParams }), 300);
 }
 
-// SVG avatars
-const AI_AVATAR = `<svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M5 3a3 3 0 1 1 6 0v1a3 3 0 0 1-6 0V3zm3-2a2 2 0 0 0-2 2v1a2 2 0 1 0 4 0V3a2 2 0 0 0-2-2zM4.5 7A2.5 2.5 0 0 0 2 9.5V12a4 4 0 0 0 3.5 3.97V15A3 3 0 0 1 3 12V9.5A1.5 1.5 0 0 1 4.5 8h7A1.5 1.5 0 0 1 13 9.5V12a3 3 0 0 1-2.5 2.96v1A4 4 0 0 0 14 12V9.5A2.5 2.5 0 0 0 11.5 7h-7zM8 11a1 1 0 0 1 1 1v2.5a1 1 0 1 1-2 0V12a1 1 0 0 1 1-1z"/></svg>`;
-const USER_AVATAR = `<svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M8 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 4a2 2 0 1 1 4 0 2 2 0 0 1-4 0zm-1 5a2 2 0 0 0-2 2v.5c0 .28.22.5.5.5h9a.5.5 0 0 0 .5-.5V11a2 2 0 0 0-2-2H5zm-1 2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1H4zm-2 2.5h12v1H2v-1z"/></svg>`;
+// Avatar SVG (marca VPO — gota/V)
+const AI_AVATAR = `<svg viewBox="0 0 64 64" width="18" height="18"><path d="M32 10c-9 12-14 20-14 28a14 14 0 0 0 28 0c0-8-5-16-14-28z" fill="#ffffff"/><path d="M22 28 L32 50 L42 28" stroke="#0b1220" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const USER_AVATAR = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 4a2 2 0 1 1 4 0 2 2 0 0 1-4 0zm-1 5a2 2 0 0 0-2 2v.5c0 .28.22.5.5.5h9a.5.5 0 0 0 .5-.5V11a2 2 0 0 0-2-2H5z"/></svg>`;
+
+// Sanitização contra XSS — usada para TODO conteúdo fornecido pelo utilizador
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 // Helpers de chat
+// role = 'ai'   : `content` é HTML interno confiável (gerado pelo app)
+// role = 'user' : `content` é texto bruto do utilizador — SEMPRE escapar
 function addChatMsg(role, content) {
     const container = document.getElementById('chatMessages');
     const avatar = role === 'ai' ? AI_AVATAR : USER_AVATAR;
+    const safe = role === 'user' ? escapeHtml(content) : content;
     const msgDiv = document.createElement('div');
     msgDiv.className = `chat-msg ${role}`;
-    msgDiv.innerHTML = `<div class="chat-avatar">${avatar}</div><div class="chat-bubble">${content}</div>`;
+    msgDiv.innerHTML = `<div class="chat-avatar">${avatar}</div><div class="chat-bubble">${safe}</div>`;
     container.appendChild(msgDiv);
     msgDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
     return msgDiv;

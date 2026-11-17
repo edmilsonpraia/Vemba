@@ -3,98 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Otimização de Separadores</title>
+    <title>VPO — Vemba Process Optimizer</title>
+    <meta name="description" content="VPO · Vemba Process Optimizer — simulação, otimização multiobjectivo e dimensionamento de separadores de produção.">
+    <meta name="theme-color" content="#0b1220">
 
-    <!-- Plotly.js -->
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- Plotly.js (CDN pinned; add SRI hash em produção) -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" crossorigin="anonymous"></script>
 
-    <!-- TensorFlow.js -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0/dist/tf.min.js"></script>
+    <!-- TensorFlow.js (CDN pinned; add SRI hash em produção) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0/dist/tf.min.js" crossorigin="anonymous"></script>
 
-    <!-- Google Fonts -->
+    <!-- Fonts: Inter (UI) + JetBrains Mono (dados) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-    <!-- Favicon VS Code -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cmask id='m'%3E%3Crect width='100' height='100' fill='%23fff'/%3E%3C/mask%3E%3Cpath d='M70.7 3.6L31.4 38.4 12.5 24.1 5 27.5v45l7.5 3.4 18.9-14.3L70.7 96.4 95 86.3V13.7L70.7 3.6zM31.4 62.5L17.5 50l13.9-12.5v25zM70.7 75.7L46.8 50l23.9-25.7v51.4z' fill='%23007ACC'/%3E%3C/svg%3E">
+    <!-- Favicon VPO (marca própria: gota + V estilizado, cor Vemba) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2306b6d4'/%3E%3Cstop offset='1' stop-color='%230ea5e9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M32 10c-9 12-14 20-14 28a14 14 0 0 0 28 0c0-8-5-16-14-28z' fill='url(%23g)'/%3E%3Cpath d='M22 28 L32 50 L42 28' stroke='%230b1220' stroke-width='3.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 
     <style>
         /* ============================================
-           VS CODE DARK THEME - VARIÁVEIS E RESET
+           VPO · DESIGN TOKENS (Industrial Dark — WCAG AAA)
+           Inspirado em Carbon / Linear / Palantir Workshop.
+           Contrastes verificados: ≥ 7:1 em texto primário/secundário
+           sobre bg-primary (#0b1220).
            ============================================ */
         :root {
-            /* VS Code Dark Theme Colors */
-            --bg-primary: #1e1e1e;
-            --bg-secondary: #252526;
-            --bg-tertiary: #2d2d2d;
-            --bg-hover: #2a2d2e;
-            --bg-active: #37373d;
-            --bg-input: #3c3c3c;
+            /* Superfícies (slate 950→800 + canvas elevado) */
+            --bg-primary: #0b1220;      /* canvas base */
+            --bg-secondary: #111a2c;    /* painéis */
+            --bg-tertiary: #162138;     /* cards, inputs */
+            --bg-hover: #1a2742;
+            --bg-active: #22304f;
+            --bg-input: #0f1829;
+            --surface-hi: rgba(255,255,255,0.04); /* elevação por luz */
 
-            /* Borders */
-            --border-color: #3c3c3c;
-            --border-active: #007acc;
+            /* Bordas */
+            --border-color: #1f2a44;
+            --border-strong: #2a3756;
+            --border-active: #06b6d4;
 
-            /* Text */
-            --text-primary: #cccccc;
-            --text-secondary: #858585;
-            --text-muted: #6a6a6a;
-            --text-bright: #e8e8e8;
+            /* Texto (AAA ≥ 7:1 sobre bg-primary) */
+            --text-primary: #f1f5f9;    /* ratio ≈ 15.6:1 */
+            --text-secondary: #cbd5e1;  /* ratio ≈ 11.4:1 */
+            --text-muted: #94a3b8;      /* ratio ≈ 7.2:1 */
+            --text-bright: #ffffff;
             --text-white: #ffffff;
+            --text-inverse: #0b1220;
 
-            /* Accent - VS Code Blue */
-            --accent: #007acc;
-            --accent-hover: #1a8ad4;
-            --accent-dark: #0062a3;
-            --accent-subtle: rgba(0, 122, 204, 0.15);
+            /* Accent — Vemba Cyan */
+            --accent: #06b6d4;
+            --accent-hover: #22d3ee;
+            --accent-dark: #0891b2;
+            --accent-subtle: rgba(6, 182, 212, 0.14);
+            --accent-ghost: rgba(6, 182, 212, 0.08);
 
-            /* Syntax Colors (C# style) */
-            --syntax-green: #6a9955;
-            --syntax-blue: #569cd6;
-            --syntax-lightblue: #9cdcfe;
-            --syntax-purple: #c586c0;
-            --syntax-yellow: #dcdcaa;
-            --syntax-orange: #ce9178;
-            --syntax-teal: #4ec9b0;
+            /* Paleta semântica para dados (não cores de syntax) */
+            --data-1: #06b6d4;  /* cyan   */
+            --data-2: #a78bfa;  /* violet */
+            --data-3: #f59e0b;  /* amber  */
+            --data-4: #10b981;  /* emerald*/
+            --data-5: #f472b6;  /* pink   */
+            --data-6: #60a5fa;  /* blue   */
 
-            /* Status */
-            --success: #4ec9b0;
-            --warning: #cca700;
-            --error: #f14c4c;
-            --info: #3794ff;
+            /* Aliases legados (mantém cores existentes mapeadas para a nova paleta) */
+            --syntax-green: #10b981;
+            --syntax-blue: #60a5fa;
+            --syntax-lightblue: #67e8f9;   /* valores numéricos */
+            --syntax-purple: #a78bfa;
+            --syntax-yellow: #fbbf24;
+            --syntax-orange: #fb923c;
+            --syntax-teal: #2dd4bf;
 
-            /* Espaçamentos */
-            --spacing-xs: 0.25rem;
-            --spacing-sm: 0.5rem;
-            --spacing-md: 1rem;
-            --spacing-lg: 1.5rem;
-            --spacing-xl: 2rem;
-            --spacing-2xl: 3rem;
+            /* Status (verdadeiras semânticas) */
+            --success: #10b981;
+            --success-weak: rgba(16, 185, 129, 0.12);
+            --warning: #f59e0b;
+            --warning-weak: rgba(245, 158, 11, 0.12);
+            --error: #ef4444;
+            --error-weak: rgba(239, 68, 68, 0.12);
+            --info: #3b82f6;
+            --info-weak: rgba(59, 130, 246, 0.12);
 
-            /* Tipografia */
-            --font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+            /* Espaçamento — 4pt scale */
+            --spacing-xs: 0.25rem;  /* 4  */
+            --spacing-sm: 0.5rem;   /* 8  */
+            --spacing-md: 1rem;     /* 16 */
+            --spacing-lg: 1.5rem;   /* 24 */
+            --spacing-xl: 2rem;     /* 32 */
+            --spacing-2xl: 3rem;    /* 48 */
+
+            /* Tipografia — Inter (UI) · JetBrains Mono (dados) */
+            --font-family: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, Consolas, 'Courier New', monospace;
             --font-ui: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            --font-size-xs: 0.75rem;
-            --font-size-sm: 0.8125rem;
-            --font-size-base: 0.875rem;
-            --font-size-lg: 1rem;
-            --font-size-xl: 1.125rem;
-            --font-size-2xl: 1.25rem;
-            --font-size-3xl: 1.5rem;
+            --font-display: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+            --font-size-xs: 0.75rem;    /* 12 */
+            --font-size-sm: 0.8125rem;  /* 13 */
+            --font-size-base: 0.9375rem;/* 15 */
+            --font-size-lg: 1rem;       /* 16 */
+            --font-size-xl: 1.125rem;   /* 18 */
+            --font-size-2xl: 1.5rem;    /* 24 */
+            --font-size-3xl: 2rem;      /* 32 */
+            --font-size-4xl: 2.5rem;    /* 40 */
 
             /* Sombras */
-            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
-            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+            --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
+            --shadow-glow: 0 0 0 1px var(--border-active), 0 8px 24px rgba(6,182,212,0.18);
 
-            /* Border radius */
-            --radius-sm: 3px;
-            --radius-md: 4px;
-            --radius-lg: 6px;
+            /* Raios */
+            --radius-sm: 4px;
+            --radius-md: 6px;
+            --radius-lg: 10px;
+            --radius-xl: 14px;
+
+            /* Foco acessível */
+            --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--accent);
 
             /* Transições */
-            --transition: all 0.15s ease;
+            --transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+            --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         * {
@@ -115,6 +145,38 @@
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            font-feature-settings: 'ss01', 'cv11';
+        }
+
+        /* Tipografia: numéricos tabulares em TODO contexto de dados */
+        .metric-value, .input-value, .numeric,
+        td, th, .mono, code, pre,
+        input[type="number"], input[type="range"] + .input-value,
+        .chat-bubble .val, .chat-bubble td, .chat-bubble th,
+        .formula-card .formula, .spec-card span {
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: 'tnum' 1, 'lnum' 1;
+        }
+
+        /* Hierarquia global de texto */
+        h1, h2, h3, h4, h5 {
+            font-family: var(--font-display);
+            letter-spacing: -0.01em;
+        }
+
+        /* Foco global acessível (WCAG 2.4.7) */
+        :focus-visible {
+            outline: none;
+            box-shadow: var(--focus-ring);
+            border-radius: var(--radius-sm);
+        }
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible,
+        a:focus-visible {
+            outline: none;
+            box-shadow: var(--focus-ring);
         }
 
         /* ============================================
@@ -126,44 +188,74 @@
             min-height: 100vh;
         }
 
-        /* Header - Title Bar style */
+        /* App Bar — identidade de produto em primeiro lugar */
         .app-header {
-            background: #323233;
+            background: linear-gradient(180deg, var(--bg-secondary), var(--bg-primary));
             border-bottom: 1px solid var(--border-color);
             position: sticky;
             top: 0;
             z-index: 1000;
-            -webkit-app-region: drag;
+            backdrop-filter: saturate(140%) blur(6px);
         }
 
         .header-content {
             max-width: 100%;
             margin: 0 auto;
-            padding: 6px var(--spacing-lg);
+            padding: 10px var(--spacing-lg);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: var(--spacing-md);
+            min-height: 56px;
         }
 
         .header-title {
             display: flex;
             align-items: center;
-            gap: var(--spacing-sm);
+            gap: 10px;
         }
 
         .header-title h1 {
-            font-size: var(--font-size-sm);
-            font-weight: 400;
-            color: var(--text-secondary);
-            font-family: var(--font-ui);
-            letter-spacing: 0;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-bright);
+            font-family: var(--font-display);
+            letter-spacing: -0.01em;
+            line-height: 1;
+            display: inline-flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .header-title h1 .product-sub {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .env-badge {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: var(--warning-weak);
+            color: var(--warning);
+            border: 1px solid rgba(245,158,11,0.4);
         }
 
         .logo-icon {
-            width: 18px;
-            height: 18px;
+            width: 28px;
+            height: 28px;
             display: flex;
             align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #06b6d4, #0ea5e9);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(6,182,212,0.35), inset 0 1px 0 rgba(255,255,255,0.3);
         }
 
         .logo-icon svg {
@@ -196,17 +288,8 @@
             width: 100%;
         }
 
-        /* Activity Bar - thin icon strip */
-        .activity-bar {
-            width: 48px;
-            background: #333333;
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding-top: 4px;
-            flex-shrink: 0;
-        }
+        /* Activity Bar — REMOVIDO (chrome de IDE sem função). Mantido como no-op para compat. */
+        .activity-bar { display: none !important; }
 
         .activity-btn {
             width: 48px;
@@ -253,13 +336,13 @@
         }
 
         .sidebar {
-            width: 220px;
+            width: 300px;
             background: var(--bg-secondary);
             border-right: 1px solid var(--border-color);
             padding: 0;
             overflow-y: auto;
             overflow-x: hidden;
-            transition: width 0.2s ease;
+            transition: width 0.2s var(--ease-out);
         }
 
         .sidebar.collapsed {
@@ -271,16 +354,36 @@
         .sidebar-header {
             display: flex;
             align-items: center;
-            gap: 6px;
-            justify-content: flex-start;
-            padding: 8px 10px;
+            gap: 8px;
+            justify-content: space-between;
+            padding: 12px 14px;
             font-size: 11px;
             font-weight: 700;
-            color: var(--text-secondary);
+            color: var(--text-primary);
             text-transform: uppercase;
             letter-spacing: 0.08em;
             font-family: var(--font-ui);
             white-space: nowrap;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-primary);
+        }
+
+        .sidebar-header .reset-all {
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--text-muted);
+            background: transparent;
+            padding: 3px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .sidebar-header .reset-all:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-ghost);
         }
 
         .sidebar-header button {
@@ -306,140 +409,322 @@
         .sidebar-section h3 {
             font-size: 11px;
             font-weight: 600;
-            color: var(--text-bright);
+            color: var(--text-secondary);
             text-transform: uppercase;
-            letter-spacing: 0.03em;
-            padding: 5px 10px;
-            background: var(--bg-secondary);
+            letter-spacing: 0.08em;
+            padding: 10px 14px;
+            background: transparent;
             margin: 0;
             cursor: pointer;
             user-select: none;
             font-family: var(--font-ui);
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
             white-space: nowrap;
+            border-top: 1px solid var(--border-color);
         }
+
+        .sidebar-section:first-of-type h3 { border-top: none; }
 
         .sidebar-section h3::before {
             content: '';
             display: inline-block;
             width: 0;
             height: 0;
-            border-left: 4px solid var(--text-secondary);
+            border-left: 4px solid var(--text-muted);
             border-top: 3px solid transparent;
             border-bottom: 3px solid transparent;
-            transition: transform 0.15s ease;
+            transition: transform 0.15s var(--ease-out);
+            margin-right: 2px;
         }
 
-        .sidebar-section.open h3::before {
-            transform: rotate(90deg);
-        }
+        .sidebar-section.open h3::before { transform: rotate(90deg); border-left-color: var(--accent); }
 
-        .sidebar-section h3:hover {
-            background: var(--bg-hover);
-        }
+        .sidebar-section h3:hover { color: var(--text-primary); background: var(--bg-tertiary); }
 
         .sidebar-section .section-body {
             overflow: hidden;
             max-height: 0;
-            transition: max-height 0.25s ease;
+            transition: max-height 0.25s var(--ease-out);
         }
 
-        .sidebar-section.open .section-body {
-            max-height: 600px;
-        }
+        .sidebar-section.open .section-body { max-height: 900px; }
 
+        /* Compound Input (slider + número + unidade) — padrão industrial */
         .input-group {
             margin-bottom: 0;
-            padding: 3px 12px;
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
         }
+
+        .input-group:last-child { border-bottom: none; }
 
         .input-group label {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: baseline;
             font-size: 11px;
-            font-weight: 400;
-            color: var(--text-primary);
-            margin-bottom: 2px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
             font-family: var(--font-ui);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             white-space: nowrap;
         }
 
         .input-value {
             font-weight: 600;
-            color: var(--syntax-lightblue);
-            background: var(--bg-input);
-            padding: 0 5px;
-            border-radius: var(--radius-sm);
+            color: var(--text-bright);
+            background: transparent;
+            padding: 0;
             font-family: var(--font-family);
-            font-size: 11px;
-            line-height: 1.6;
+            font-size: 13px;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
         }
 
-        /* Range inputs */
-        input[type="range"] {
-            width: 100%;
-            height: 4px;
-            border-radius: 2px;
-            background: var(--bg-input);
-            outline: none;
-            -webkit-appearance: none;
+        .input-value .unit {
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 500;
+            margin-left: 3px;
+            text-transform: lowercase;
+            letter-spacing: 0;
+        }
+
+        /* Bounds em micro texto abaixo do slider */
+        .input-bounds {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: var(--font-family);
+            margin-top: 6px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Health dot (verde/âmbar/vermelho) à esquerda do rótulo */
+        .param-health {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            margin-right: 6px;
+            vertical-align: middle;
+            transition: background 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+        }
+        .param-health.ok   { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,0.45); }
+        .param-health.warn { background: var(--warning); box-shadow: 0 0 6px rgba(245,158,11,0.45); }
+        .param-health.crit { background: var(--error);   box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+
+        /* Chip delta vs baseline */
+        .delta-vs-base {
+            font-family: var(--font-family);
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--text-muted);
+            padding: 1px 6px;
+            border-radius: 999px;
+            background: transparent;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
             transition: var(--transition);
         }
+        .delta-vs-base.changed  { color: var(--accent); background: var(--accent-ghost); }
+        .delta-vs-base.positive { color: var(--accent); background: var(--accent-ghost); }
+        .delta-vs-base.negative { color: var(--accent); background: var(--accent-ghost); }
 
-        input[type="range"]:hover {
-            background: #4c4c4c;
+        /* Click-to-edit do valor */
+        .input-value { cursor: text; user-select: none; }
+        .input-value:hover { background: var(--bg-tertiary); border-radius: 4px; padding: 0 4px; margin: 0 -4px; }
+        .input-edit {
+            width: 90px;
+            background: var(--bg-primary);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            padding: 2px 6px;
+            color: var(--text-bright);
+            font-family: var(--font-family);
+            font-size: 13px;
+            font-weight: 600;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            outline: none;
+        }
+
+        /* Cenário: dropdown + ações */
+        .scenario-bar {
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-primary);
+        }
+        .scenario-bar label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+        }
+        .scenario-row { display: flex; gap: 6px; align-items: center; }
+
+        .scenario-select {
+            flex: 1;
+            appearance: none;
+            -webkit-appearance: none;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-strong);
+            color: var(--text-bright);
+            padding: 7px 28px 7px 12px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-family: var(--font-ui);
+            font-weight: 500;
+            cursor: pointer;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3.5l3 3 3-3' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/></svg>");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+        }
+        .scenario-select:hover { border-color: var(--accent); }
+        .scenario-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ghost); outline: none; }
+
+        .icon-btn {
+            width: 32px; height: 32px;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0;
+            flex-shrink: 0;
+        }
+        .icon-btn:hover { color: var(--text-bright); border-color: var(--accent); background: var(--accent-ghost); box-shadow: none; }
+        .icon-btn svg { width: 14px; height: 14px; }
+
+        /* Contador na secção + indicador de alterados */
+        .sidebar-section h3 .section-counter {
+            margin-left: auto;
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--text-muted);
+            letter-spacing: 0;
+            text-transform: none;
+        }
+        .sidebar-section h3 .section-counter .dot-mod {
+            display: inline-block;
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: var(--accent);
+            margin-right: 4px;
+            vertical-align: middle;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+        .sidebar-section.has-mods h3 .section-counter .dot-mod { opacity: 1; }
+
+        /* Scrollbar custom para a sidebar */
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+        .sidebar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* Collapse to rail (barra de 44px só com chevron para re-expandir) */
+        .sidebar.rail {
+            width: 44px;
+        }
+        .sidebar.rail > *:not(.rail-expand) { display: none; }
+        .rail-expand {
+            display: none;
+            width: 44px; height: 44px;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            border-radius: 0;
+        }
+        .rail-expand:hover { color: var(--accent); background: var(--accent-ghost); box-shadow: none; }
+        .sidebar.rail .rail-expand { display: flex; }
+
+        /* Range inputs — track + thumb polido */
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--pct, 50%), var(--bg-input) var(--pct, 50%), var(--bg-input) 100%);
+            outline: none;
+            -webkit-appearance: none;
+            transition: background 0.1s linear;
+            cursor: pointer;
         }
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 12px;
-            height: 12px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
-            background: var(--accent);
+            background: #ffffff;
+            border: 2px solid var(--accent);
             cursor: pointer;
-            transition: var(--transition);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.3);
-            background: var(--accent-hover);
+            transform: scale(1.15);
+            box-shadow: 0 0 0 6px var(--accent-ghost), 0 1px 4px rgba(0,0,0,0.4);
+        }
+
+        input[type="range"]:focus-visible::-webkit-slider-thumb {
+            box-shadow: 0 0 0 4px var(--accent-subtle), 0 1px 4px rgba(0,0,0,0.4);
         }
 
         input[type="range"]::-moz-range-thumb {
-            width: 12px;
-            height: 12px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
-            background: var(--accent);
+            background: #ffffff;
+            border: 2px solid var(--accent);
             cursor: pointer;
-            border: none;
-            transition: var(--transition);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+            transition: transform 0.15s ease;
         }
 
         input[type="range"]::-moz-range-thumb:hover {
-            transform: scale(1.3);
-            background: var(--accent-hover);
+            transform: scale(1.15);
         }
 
         /* Number inputs */
-        input[type="number"] {
+        input[type="number"], input[type="text"] {
             width: 100%;
-            padding: 2px 6px;
+            padding: 7px 10px;
             border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
-            font-size: 11px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
             font-family: var(--font-family);
             background: var(--bg-input);
             color: var(--text-primary);
             transition: var(--transition);
+            font-variant-numeric: tabular-nums;
         }
 
-        input[type="number"]:focus {
-            outline: none;
+        input[type="number"]:hover, input[type="text"]:hover {
+            border-color: var(--border-strong);
+        }
+
+        input[type="number"]:focus, input[type="text"]:focus {
             border-color: var(--accent);
+            background: var(--bg-primary);
         }
 
         /* Main content area */
@@ -450,79 +735,64 @@
             background: var(--bg-primary);
         }
 
-        /* Tabs - VS Code Tab Bar */
+        /* Segmented nav — barra de módulos profissional */
         .tabs {
             display: flex;
-            gap: 0;
-            background: var(--bg-tertiary);
+            gap: 2px;
+            background: var(--bg-primary);
             border-bottom: 1px solid var(--border-color);
             margin-bottom: 0;
             overflow-x: auto;
             scrollbar-width: thin;
+            padding: 6px 14px 0 14px;
         }
 
-        .tabs::-webkit-scrollbar {
-            height: 3px;
-        }
-
-        .tabs::-webkit-scrollbar-track {
-            background: var(--bg-tertiary);
-        }
-
-        .tabs::-webkit-scrollbar-thumb {
-            background: var(--text-muted);
-            border-radius: 2px;
-        }
+        .tabs::-webkit-scrollbar { height: 4px; }
+        .tabs::-webkit-scrollbar-track { background: transparent; }
+        .tabs::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
 
         .tab {
-            padding: 8px 16px;
-            background: var(--bg-tertiary);
+            padding: 9px 14px;
+            background: transparent;
             border: none;
-            border-bottom: none;
-            border-right: 1px solid var(--border-color);
+            border-bottom: 2px solid transparent;
             font-size: var(--font-size-sm);
-            font-weight: 400;
-            color: var(--text-secondary);
+            font-weight: 500;
+            color: var(--text-muted);
             cursor: pointer;
             white-space: nowrap;
             transition: var(--transition);
             font-family: var(--font-ui);
-            box-shadow: none;
             border-radius: 0;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
+            position: relative;
+            bottom: -1px;
         }
 
         .tab .tab-icon {
-            width: 16px;
-            height: 16px;
+            width: 15px;
+            height: 15px;
             flex-shrink: 0;
-            opacity: 0.7;
+            opacity: 0.8;
         }
 
-        .tab.active .tab-icon {
-            opacity: 1;
-        }
+        .tab.active .tab-icon { opacity: 1; }
 
-        .tab .tab-icon svg {
-            width: 16px;
-            height: 16px;
-            display: block;
-        }
+        .tab .tab-icon svg { width: 15px; height: 15px; display: block; }
 
         .tab:hover {
             color: var(--text-primary);
-            background: var(--bg-hover);
+            background: transparent;
             box-shadow: none;
-            transform: none;
         }
 
         .tab.active {
-            color: var(--text-white);
-            background: var(--bg-primary);
-            border-bottom: 1px solid var(--accent);
-            margin-bottom: -1px;
+            color: var(--text-bright);
+            background: transparent;
+            border-bottom-color: var(--accent);
+            font-weight: 600;
         }
 
         /* Tab content */
@@ -541,73 +811,129 @@
             to { opacity: 1; }
         }
 
-        /* Cards e Containers */
+        /* Cards (superfície elevada por luz, não por borda) */
         .card {
             background: var(--bg-secondary);
+            background-image: linear-gradient(180deg, rgba(255,255,255,0.025), transparent 40%);
             border-radius: var(--radius-lg);
             border: 1px solid var(--border-color);
             padding: var(--spacing-lg);
             margin-bottom: var(--spacing-md);
             transition: var(--transition);
+            box-shadow: var(--shadow-sm);
         }
 
         .card:hover {
-            border-color: #505050;
+            border-color: var(--border-strong);
         }
 
         .card-title {
-            font-size: var(--font-size-base);
+            font-size: 11px;
             font-weight: 600;
-            color: var(--text-bright);
+            color: var(--text-secondary);
             margin-bottom: var(--spacing-md);
             font-family: var(--font-ui);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
 
-        /* Metrics Grid */
+        /* Métricas KPI — hero numbers */
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: var(--spacing-md);
             margin-bottom: var(--spacing-lg);
         }
 
         .metric-card {
             background: var(--bg-secondary);
+            background-image: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 55%);
             border: 1px solid var(--border-color);
             border-radius: var(--radius-lg);
-            padding: var(--spacing-md);
+            padding: var(--spacing-lg);
             transition: var(--transition);
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: "";
+            position: absolute; inset: 0 auto auto 0;
+            width: 3px; height: 100%;
+            background: var(--accent);
+            opacity: 0;
+            transition: opacity 0.2s var(--ease-out);
         }
 
         .metric-card:hover {
-            border-color: var(--accent);
-            transform: translateY(-1px);
+            border-color: var(--border-strong);
+            transform: none;
         }
+        .metric-card:hover::before { opacity: 1; }
 
         .metric-label {
-            font-size: var(--font-size-xs);
-            font-weight: 500;
-            color: var(--text-secondary);
-            margin-bottom: var(--spacing-xs);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 14px;
             display: flex;
-            align-items: center;
+            align-items: baseline;
+            justify-content: space-between;
             gap: var(--spacing-xs);
             font-family: var(--font-ui);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .metric-label .metric-ref {
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--text-muted);
+            opacity: 0.75;
         }
 
         .metric-value {
-            font-size: var(--font-size-2xl);
-            font-weight: 700;
-            color: var(--syntax-lightblue);
-            margin-bottom: var(--spacing-xs);
-            font-family: var(--font-family);
+            font-size: clamp(26px, 2.6vw, 34px);
+            font-weight: 600;
+            color: var(--text-bright);
+            margin-bottom: 10px;
+            font-family: var(--font-display);
+            line-height: 1.05;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .metric-value .metric-unit {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: lowercase;
+            letter-spacing: 0;
+            font-family: var(--font-ui);
+            font-variant-numeric: tabular-nums;
         }
 
         .metric-delta {
-            font-size: var(--font-size-xs);
-            font-weight: 500;
-            font-family: var(--font-family);
+            font-size: 11px;
+            font-weight: 600;
+            font-family: var(--font-ui);
+            font-variant-numeric: tabular-nums;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid transparent;
         }
+        .metric-delta .arrow { font-size: 9px; line-height: 1; }
+        .metric-delta.positive { color: var(--success); background: var(--success-weak); border-color: rgba(16,185,129,0.25); }
+        .metric-delta.negative { color: var(--error);   background: var(--error-weak);   border-color: rgba(239,68,68,0.25); }
 
         .metric-delta.positive {
             color: var(--success);
@@ -699,29 +1025,46 @@
             border-radius: var(--radius-lg);
         }
 
-        /* Buttons */
+        /* Botões */
         button {
             background: var(--accent);
-            color: var(--text-white);
-            border: none;
-            padding: 6px 14px;
+            color: var(--text-inverse);
+            border: 1px solid transparent;
+            padding: 8px 14px;
             border-radius: var(--radius-md);
             font-size: var(--font-size-sm);
-            font-weight: 500;
+            font-weight: 600;
             font-family: var(--font-ui);
             cursor: pointer;
             transition: var(--transition);
-            box-shadow: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: -0.005em;
         }
 
         button:hover {
             background: var(--accent-hover);
-            box-shadow: none;
-            transform: none;
+            box-shadow: 0 2px 10px rgba(6,182,212,0.25);
         }
 
         button:active {
             background: var(--accent-dark);
+            transform: translateY(1px);
+        }
+
+        button[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        .btn-ghost:hover {
+            background: var(--bg-hover);
+            border-color: var(--border-strong);
+            color: var(--text-bright);
+            box-shadow: none;
         }
 
         /* Result Boxes */
@@ -935,115 +1278,87 @@
         }
 
         /* ============================================
-           LIGHT THEME
+           LIGHT THEME (alinhado ao novo sistema)
            ============================================ */
         [data-theme="light"] {
             --bg-primary: #ffffff;
-            --bg-secondary: #f3f3f3;
-            --bg-tertiary: #ececec;
-            --bg-hover: #e8e8e8;
-            --bg-active: #d6d6d6;
+            --bg-secondary: #f8fafc;
+            --bg-tertiary: #f1f5f9;
+            --bg-hover: #e2e8f0;
+            --bg-active: #cbd5e1;
             --bg-input: #ffffff;
+            --surface-hi: rgba(0,0,0,0.03);
 
-            --border-color: #d4d4d4;
-            --border-active: #007acc;
+            --border-color: #e2e8f0;
+            --border-strong: #cbd5e1;
+            --border-active: #06b6d4;
 
-            --text-primary: #333333;
-            --text-secondary: #616161;
-            --text-muted: #999999;
-            --text-bright: #1e1e1e;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --text-bright: #020617;
             --text-white: #ffffff;
+            --text-inverse: #ffffff;
 
-            --accent: #007acc;
-            --accent-hover: #0062a3;
-            --accent-dark: #004e82;
-            --accent-subtle: rgba(0, 122, 204, 0.1);
+            --accent: #0891b2;
+            --accent-hover: #06b6d4;
+            --accent-dark: #0e7490;
+            --accent-subtle: rgba(8, 145, 178, 0.10);
+            --accent-ghost: rgba(8, 145, 178, 0.06);
 
-            --syntax-green: #008000;
-            --syntax-blue: #0000ff;
-            --syntax-lightblue: #0070c1;
-            --syntax-purple: #af00db;
-            --syntax-yellow: #795e26;
-            --syntax-orange: #a31515;
-            --syntax-teal: #267f99;
+            --syntax-green: #047857;
+            --syntax-blue: #2563eb;
+            --syntax-lightblue: #0e7490;
+            --syntax-purple: #7c3aed;
+            --syntax-yellow: #b45309;
+            --syntax-orange: #c2410c;
+            --syntax-teal: #0f766e;
 
-            --success: #16825d;
-            --warning: #9d5d00;
-            --error: #cd3131;
-            --info: #0066bf;
+            --success: #047857;
+            --success-weak: rgba(4, 120, 87, 0.10);
+            --warning: #b45309;
+            --warning-weak: rgba(180, 83, 9, 0.10);
+            --error: #b91c1c;
+            --error-weak: rgba(185, 28, 28, 0.10);
+            --info: #1d4ed8;
+            --info-weak: rgba(29, 78, 216, 0.10);
 
-            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
-            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.12);
+            --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent);
         }
 
         [data-theme="light"] .app-header {
-            background: #dddddd;
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
         }
 
         [data-theme="light"] .activity-bar {
-            background: #2c2c2c;
+            background: var(--bg-tertiary);
+            border-right: 1px solid var(--border-color);
         }
 
-        [data-theme="light"] .activity-btn {
-            color: #858585;
-        }
-
+        [data-theme="light"] .activity-btn { color: var(--text-muted); }
         [data-theme="light"] .activity-btn:hover,
-        [data-theme="light"] .activity-btn.active {
-            color: #ffffff;
-        }
+        [data-theme="light"] .activity-btn.active { color: var(--text-bright); }
 
-        [data-theme="light"] .tabs {
-            background: #ececec;
-        }
+        [data-theme="light"] .tabs { background: var(--bg-primary); }
+        [data-theme="light"] .tab { background: transparent; color: var(--text-muted); }
+        [data-theme="light"] .tab.active { background: transparent; color: var(--text-bright); }
+        [data-theme="light"] .tab:hover { background: transparent; color: var(--text-primary); }
 
-        [data-theme="light"] .tab {
-            background: #ececec;
-            color: var(--text-secondary);
-        }
+        [data-theme="light"] .info-box { background: var(--info-weak); }
+        [data-theme="light"] .warning-box { background: var(--warning-weak); }
+        [data-theme="light"] .success-box { background: var(--success-weak); }
+        [data-theme="light"] .result-box { background: var(--bg-secondary); }
 
-        [data-theme="light"] .tab.active {
-            background: var(--bg-primary);
+        [data-theme="light"] ::selection {
+            background: var(--accent-subtle);
             color: var(--text-bright);
         }
 
-        [data-theme="light"] .tab:hover {
-            background: #e0e0e0;
-        }
-
-        [data-theme="light"] input[type="number"] {
-            border: 1px solid #cecece;
-        }
-
-        [data-theme="light"] .info-box {
-            background: rgba(0, 102, 191, 0.06);
-        }
-
-        [data-theme="light"] .warning-box {
-            background: rgba(157, 93, 0, 0.06);
-        }
-
-        [data-theme="light"] .success-box {
-            background: rgba(22, 130, 93, 0.06);
-        }
-
-        [data-theme="light"] .result-box {
-            background: var(--bg-secondary);
-        }
-
-        [data-theme="light"] ::selection {
-            background: rgba(0, 122, 204, 0.2);
-            color: #000000;
-        }
-
-        [data-theme="light"] ::-webkit-scrollbar-thumb {
-            background: rgba(100, 100, 100, 0.3);
-        }
-
-        [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-            background: rgba(100, 100, 100, 0.5);
-        }
+        [data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.35); }
+        [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.6); }
 
         /* Theme Toggle Button */
         .theme-toggle {
@@ -1090,80 +1405,113 @@
         }
 
         /* ============================================
-           AI ASSISTANT - CHAT INTERFACE
+           ASSISTENTE VPO — Chat
            ============================================ */
         .chat-container {
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 90px);
+            height: calc(100vh - 110px);
             background: var(--bg-primary);
         }
 
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: var(--spacing-lg);
+            padding: var(--spacing-xl) var(--spacing-lg);
             display: flex;
             flex-direction: column;
-            gap: var(--spacing-md);
+            gap: var(--spacing-lg);
+            align-items: center;
         }
 
         .chat-msg {
             display: flex;
-            gap: 10px;
-            max-width: 92%;
-            animation: chatSlideIn 0.3s ease;
+            gap: 12px;
+            width: 100%;
+            max-width: 780px;
+            animation: chatSlideIn 0.25s var(--ease-out);
         }
 
         @keyframes chatSlideIn {
-            from { opacity: 0; transform: translateY(12px); }
+            from { opacity: 0; transform: translateY(6px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .chat-msg.ai { align-self: flex-start; }
-        .chat-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+        .chat-msg.ai { align-self: center; flex-direction: row; }
+        .chat-msg.user { align-self: center; flex-direction: row-reverse; }
 
         .chat-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 700;
+            color: #fff;
         }
 
         .chat-msg.ai .chat-avatar {
-            background: linear-gradient(135deg, #007acc, #0062a3);
-            color: #fff;
+            background: linear-gradient(135deg, #06b6d4, #0ea5e9);
+            box-shadow: 0 2px 8px rgba(6,182,212,0.3);
         }
 
         .chat-msg.user .chat-avatar {
-            background: var(--syntax-teal);
-            color: #fff;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-strong);
+            color: var(--text-primary);
         }
 
         .chat-bubble {
             background: var(--bg-secondary);
+            background-image: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 10px 14px;
+            border-radius: var(--radius-lg);
+            padding: 14px 16px;
             font-size: var(--font-size-sm);
             line-height: 1.6;
             color: var(--text-primary);
             overflow-x: auto;
+            flex: 1;
+            min-width: 0;
         }
 
         .chat-msg.ai .chat-bubble {
-            border-top-left-radius: 4px;
+            border-top-left-radius: 2px;
         }
 
         .chat-msg.user .chat-bubble {
-            background: var(--accent-subtle);
-            border-color: var(--accent);
-            border-top-right-radius: 4px;
+            background: var(--accent-ghost);
+            border-color: rgba(6,182,212,0.3);
+            border-top-right-radius: 2px;
+            max-width: 72ch;
+            flex: initial;
+        }
+
+        /* Rótulo de autor + timestamp acima da bolha */
+        .chat-bubble .chat-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .chat-bubble .chat-meta strong {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 12px;
+        }
+        .chat-bubble .chat-meta .model-tag {
+            font-family: var(--font-family);
+            font-size: 10px;
+            padding: 1px 6px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            color: var(--text-muted);
         }
 
         .chat-bubble strong { color: var(--text-bright); }
@@ -1172,27 +1520,67 @@
         .chat-bubble .warn { color: var(--warning); }
         .chat-bubble .crit { color: var(--error); }
 
-        .chat-bubble table {
+        /* Tabelas — padrão Tufte: linhas horizontais, zero verticais, zebra sutil, numéricos à direita */
+        .chat-bubble table, table.data-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: var(--font-size-xs);
-            margin: 8px 0;
+            font-size: var(--font-size-sm);
+            margin: 10px 0;
+            background: var(--bg-primary);
+            border-radius: var(--radius-md);
+            overflow: hidden;
         }
 
-        .chat-bubble th, .chat-bubble td {
-            padding: 5px 8px;
-            border: 1px solid var(--border-color);
+        .chat-bubble th, .chat-bubble td,
+        table.data-table th, table.data-table td {
+            padding: 9px 12px;
+            border: none;
+            border-bottom: 1px solid var(--border-color);
             text-align: left;
+            vertical-align: middle;
         }
 
-        .chat-bubble th {
+        .chat-bubble tr:last-child td,
+        table.data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .chat-bubble tbody tr:nth-child(odd) td,
+        table.data-table tbody tr:nth-child(odd) td {
+            background: rgba(255,255,255,0.015);
+        }
+
+        .chat-bubble tbody tr:hover td,
+        table.data-table tbody tr:hover td {
+            background: var(--accent-ghost);
+        }
+
+        .chat-bubble th, table.data-table th {
+            position: sticky;
+            top: 0;
             background: var(--bg-tertiary);
             color: var(--text-bright);
             font-weight: 600;
             font-family: var(--font-ui);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border-strong);
+            z-index: 1;
         }
 
-        .chat-bubble td { font-family: var(--font-family); }
+        .chat-bubble td { font-family: var(--font-family); color: var(--text-primary); }
+
+        /* Numéricos alinhados à direita — convenção em todas as tabelas */
+        .chat-bubble td + td,
+        table.data-table td + td {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .chat-bubble th + th,
+        table.data-table th + th {
+            text-align: right;
+        }
 
         .chat-bubble .diagram-box {
             background: #1a1a2e;
@@ -1376,36 +1764,53 @@
             display: block;
         }
 
-        /* Chat input bar */
+        /* Barra de input do chat — ancorada e centrada */
         .chat-input-bar {
             display: flex;
             gap: 8px;
-            padding: 12px var(--spacing-lg);
-            background: var(--bg-secondary);
+            padding: 14px var(--spacing-lg) 18px;
+            background: var(--bg-primary);
             border-top: 1px solid var(--border-color);
             align-items: center;
+            justify-content: center;
+        }
+
+        .chat-input-shell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            max-width: 780px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-xl);
+            padding: 6px 8px 6px 16px;
+            transition: var(--transition);
+        }
+        .chat-input-shell:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px var(--accent-ghost);
         }
 
         .chat-input-bar input {
             flex: 1;
-            background: var(--bg-input);
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 8px 0;
             color: var(--text-primary);
-            font-size: var(--font-size-sm);
+            font-size: var(--font-size-base);
             font-family: var(--font-ui);
             outline: none;
         }
 
-        .chat-input-bar input:focus { border-color: var(--accent); }
-
+        .chat-input-bar input:focus { border: none; box-shadow: none; }
         .chat-input-bar input::placeholder { color: var(--text-muted); }
 
-        .chat-input-bar button {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
+        .chat-input-bar .chat-send {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
             padding: 0;
             display: flex;
             align-items: center;
@@ -1413,10 +1818,44 @@
             flex-shrink: 0;
         }
 
-        .chat-input-bar button svg {
-            width: 18px;
-            height: 18px;
+        .chat-input-bar .chat-send svg { width: 16px; height: 16px; }
+
+        /* ============================================
+           STATUS BAR (rodapé da aplicação)
+           ============================================ */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 26px;
+            padding: 0 14px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            font-size: 11px;
+            font-family: var(--font-ui);
+            color: var(--text-muted);
+            gap: 16px;
+            flex-shrink: 0;
         }
+        .status-bar .status-left,
+        .status-bar .status-right {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+        }
+        .status-bar .status-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-variant-numeric: tabular-nums;
+        }
+        .status-bar .status-item .dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 6px rgba(16,185,129,0.5);
+        }
+        .status-bar .status-item.offline .dot { background: var(--text-muted); box-shadow: none; }
+        .status-bar .status-item strong { color: var(--text-primary); font-weight: 600; }
 
         /* Typing indicator */
         .chat-typing {
@@ -1445,15 +1884,20 @@
 <body>
     <div class="app-container">
         <!-- Header -->
-        <header class="app-header">
+        <header class="app-header" role="banner">
             <div class="header-content">
                 <div class="header-title">
-                    <span class="logo-icon">
-                        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M70.7 3.6L31.4 38.4 12.5 24.1 5 27.5v45l7.5 3.4 18.9-14.3L70.7 96.4 95 86.3V13.7L70.7 3.6zM31.4 62.5L17.5 50l13.9-12.5v25zM70.7 75.7L46.8 50l23.9-25.7v51.4z" fill="#007ACC"/>
+                    <span class="logo-icon" aria-hidden="true">
+                        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M32 10c-9 12-14 20-14 28a14 14 0 0 0 28 0c0-8-5-16-14-28z" fill="#ffffff" fill-opacity="0.95"/>
+                            <path d="M22 28 L32 50 L42 28" stroke="#0b1220" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </span>
-                    <h1>Vemba Process Optimizer (VPO)</h1>
+                    <h1>
+                        VPO
+                        <span class="product-sub">Vemba Process Optimizer</span>
+                    </h1>
+                    <span class="env-badge" title="Ambiente">FEED</span>
                 </div>
                 <div class="header-actions">
                     <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">
@@ -1499,81 +1943,119 @@
                 </nav>
 
                 <!-- Sidebar Panel -->
-                <aside class="sidebar" id="sidebar">
-                    <div class="sidebar-header">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.8;flex-shrink:0"><path d="M1.5 1H11l4 4v9.5l-.5.5h-13l-.5-.5v-13l.5-.5zM2 2v12h12V5.5L10.5 2H2z"/><path d="M5 7h6v1H5V7zm0 2h6v1H5V9zm0 2h4v1H5v-1z"/></svg>
-                        <span>Explorer</span>
+                <aside class="sidebar" id="sidebar" aria-label="Parâmetros do processo">
+                    <!-- Botão para re-expandir quando em modo rail -->
+                    <button class="rail-expand" onclick="toggleRail()" aria-label="Expandir painel">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3 L11 8 L6 13"/></svg>
+                    </button>
+
+                    <!-- Scenarios + Ações -->
+                    <div class="scenario-bar">
+                        <label for="scenarioSelect">Cenário operacional</label>
+                        <div class="scenario-row">
+                            <select class="scenario-select" id="scenarioSelect" onchange="applyScenario(this.value)" title="Pré-definições rápidas">
+                                <option value="baseline">Baseline operacional</option>
+                                <option value="highFlow">Pico de vazão</option>
+                                <option value="lowPressure">Pressão reduzida</option>
+                                <option value="highWaterCut">Água alta (BSW↑)</option>
+                                <option value="custom" disabled>Personalizado</option>
+                            </select>
+                            <button class="icon-btn" onclick="resetAllParams()" title="Repor valores de baseline" aria-label="Reset">
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 1 0 1.5-3.5"/><path d="M3 3v3h3"/></svg>
+                            </button>
+                            <button class="icon-btn" onclick="toggleRail()" title="Colapsar painel" aria-label="Colapsar">
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3 L5 8 L10 13"/></svg>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="sidebar-section open" onclick="toggleSection(this)">
-                        <h3><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.6"><path d="M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.3.7-2.4.5v1.2l2.4.5.3.7-1.3 2 .8.9 2-1.3.7.3.5 2.4h1.2l.5-2.4.7-.3 2 1.3.9-.8-1.3-2 .3-.7 2.4-.5V6.8l-2.4-.5-.3-.7 1.3-2-.8-.9-2 1.3-.7-.3zM8 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg> Parametros de Processo</h3>
+                        <h3>Parâmetros de Processo <span class="section-counter"><span class="dot-mod"></span><span data-counter="process">6</span></span></h3>
                         <div class="section-body">
-                            <div class="input-group">
+                            <div class="input-group" data-param="flowRate">
                                 <label>
-                                    <span>Vazao (m3/dia)</span>
-                                    <span class="input-value" id="flowRateValue">1250</span>
+                                    <span><span class="param-health" id="hFlowRate"></span>Vazão</span>
+                                    <span class="input-value" id="flowRateValue" data-param-id="flowRate">1 250<span class="unit">m³/d</span></span>
                                 </label>
-                                <input type="range" id="flowRate" min="150" max="2400" value="1250" step="10">
+                                <input type="range" id="flowRate" min="150" max="2400" value="1250" step="10" aria-label="Vazão em m³/dia">
+                                <div class="input-bounds"><span>150</span><span class="delta-vs-base" id="dFlowRate">±0</span><span>2 400</span></div>
                             </div>
 
-                            <div class="input-group">
+                            <div class="input-group" data-param="pressure">
                                 <label>
-                                    <span>Pressao (bar)</span>
-                                    <span class="input-value" id="pressureValue">11.3</span>
+                                    <span><span class="param-health" id="hPressure"></span>Pressão</span>
+                                    <span class="input-value" id="pressureValue" data-param-id="pressure">11.3<span class="unit">bar</span></span>
                                 </label>
-                                <input type="range" id="pressure" min="8.5" max="15.2" value="11.3" step="0.1">
+                                <input type="range" id="pressure" min="8.5" max="15.2" value="11.3" step="0.1" aria-label="Pressão em bar">
+                                <div class="input-bounds"><span>8.5</span><span class="delta-vs-base" id="dPressure">±0</span><span>15.2</span></div>
                             </div>
 
-                            <div class="input-group">
+                            <div class="input-group" data-param="temperature">
                                 <label>
-                                    <span>Temperatura (C)</span>
-                                    <span class="input-value" id="temperatureValue">62</span>
+                                    <span><span class="param-health" id="hTemperature"></span>Temperatura</span>
+                                    <span class="input-value" id="temperatureValue" data-param-id="temperature">62<span class="unit">°C</span></span>
                                 </label>
-                                <input type="range" id="temperature" min="45" max="85" value="62" step="1">
+                                <input type="range" id="temperature" min="45" max="85" value="62" step="1" aria-label="Temperatura em graus Celsius">
+                                <div class="input-bounds"><span>45</span><span class="delta-vs-base" id="dTemperature">±0</span><span>85</span></div>
                             </div>
 
-                            <div class="input-group">
+                            <div class="input-group" data-param="waterCut">
                                 <label>
-                                    <span>Corte de Agua (%)</span>
-                                    <span class="input-value" id="waterCutValue">42</span>
+                                    <span><span class="param-health" id="hWaterCut"></span>Corte de água</span>
+                                    <span class="input-value" id="waterCutValue" data-param-id="waterCut">42<span class="unit">%</span></span>
                                 </label>
-                                <input type="range" id="waterCut" min="15" max="78" value="42" step="1">
+                                <input type="range" id="waterCut" min="15" max="78" value="42" step="1" aria-label="Water cut percentual">
+                                <div class="input-bounds"><span>15</span><span class="delta-vs-base" id="dWaterCut">±0</span><span>78</span></div>
                             </div>
 
-                            <div class="input-group">
+                            <div class="input-group" data-param="gor">
                                 <label>
-                                    <span>GOR (m3/m3)</span>
-                                    <span class="input-value" id="gorValue">95</span>
+                                    <span><span class="param-health" id="hGor"></span>GOR</span>
+                                    <span class="input-value" id="gorValue" data-param-id="gor">95<span class="unit">m³/m³</span></span>
                                 </label>
-                                <input type="range" id="gor" min="45" max="180" value="95" step="5">
+                                <input type="range" id="gor" min="45" max="180" value="95" step="5" aria-label="Gas-Oil Ratio">
+                                <div class="input-bounds"><span>45</span><span class="delta-vs-base" id="dGor">±0</span><span>180</span></div>
                             </div>
 
-                            <div class="input-group">
+                            <div class="input-group" data-param="viscosity">
                                 <label>
-                                    <span>Viscosidade (cP)</span>
-                                    <span class="input-value" id="viscosityValue">15</span>
+                                    <span><span class="param-health" id="hViscosity"></span>Viscosidade</span>
+                                    <span class="input-value" id="viscosityValue" data-param-id="viscosity">15<span class="unit">cP</span></span>
                                 </label>
-                                <input type="range" id="viscosity" min="10" max="30" value="15" step="1">
+                                <input type="range" id="viscosity" min="10" max="30" value="15" step="1" aria-label="Viscosidade em centipoise">
+                                <div class="input-bounds"><span>10</span><span class="delta-vs-base" id="dViscosity">±0</span><span>30</span></div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="sidebar-section" onclick="toggleSection(this)">
-                        <h3><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.6"><path d="M8 1.5l4.5 6c1 1.33 1 3.17 0 4.5A4.48 4.48 0 0 1 8 14.5a4.48 4.48 0 0 1-4.5-2.5c-1-1.33-1-3.17 0-4.5L8 1.5zm0 1.74L4.35 8.2c-.76 1-.76 2.56 0 3.56A3.48 3.48 0 0 0 8 13.5a3.48 3.48 0 0 0 3.65-1.74c.76-1 .76-2.56 0-3.56L8 3.24z"/></svg> Propriedades dos Fluidos</h3>
+                    <div class="sidebar-section open" onclick="toggleSection(this)">
+                        <h3>Propriedades dos Fluidos <span class="section-counter"><span class="dot-mod"></span><span data-counter="fluids">3</span></span></h3>
                         <div class="section-body">
-                            <div class="input-group">
-                                <label>Densidade Oleo (kg/m3)</label>
-                                <input type="number" id="rhoOil" min="800" max="950" value="870">
+                            <div class="input-group" data-param="rhoOil">
+                                <label>
+                                    <span><span class="param-health" id="hRhoOil"></span>Densidade do óleo</span>
+                                    <span class="input-value" id="rhoOilValue" data-param-id="rhoOil">870<span class="unit">kg/m³</span></span>
+                                </label>
+                                <input type="range" id="rhoOil" min="800" max="950" value="870" step="1" aria-label="Densidade do óleo">
+                                <div class="input-bounds"><span>800</span><span class="delta-vs-base" id="dRhoOil">±0</span><span>950</span></div>
                             </div>
 
-                            <div class="input-group">
-                                <label>Densidade Agua (kg/m3)</label>
-                                <input type="number" id="rhoWater" min="1000" max="1100" value="1020">
+                            <div class="input-group" data-param="rhoWater">
+                                <label>
+                                    <span><span class="param-health" id="hRhoWater"></span>Densidade da água</span>
+                                    <span class="input-value" id="rhoWaterValue" data-param-id="rhoWater">1 020<span class="unit">kg/m³</span></span>
+                                </label>
+                                <input type="range" id="rhoWater" min="1000" max="1100" value="1020" step="1" aria-label="Densidade da água">
+                                <div class="input-bounds"><span>1 000</span><span class="delta-vs-base" id="dRhoWater">±0</span><span>1 100</span></div>
                             </div>
 
-                            <div class="input-group">
-                                <label>Densidade Gas (kg/m3)</label>
-                                <input type="number" id="rhoGas" min="0.7" max="2.0" value="1.2" step="0.1">
+                            <div class="input-group" data-param="rhoGas">
+                                <label>
+                                    <span><span class="param-health" id="hRhoGas"></span>Densidade do gás</span>
+                                    <span class="input-value" id="rhoGasValue" data-param-id="rhoGas">1.2<span class="unit">kg/m³</span></span>
+                                </label>
+                                <input type="range" id="rhoGas" min="0.7" max="2.0" value="1.2" step="0.1" aria-label="Densidade do gás">
+                                <div class="input-bounds"><span>0.7</span><span class="delta-vs-base" id="dRhoGas">±0</span><span>2.0</span></div>
                             </div>
                         </div>
                     </div>
@@ -1634,6 +2116,20 @@
                 <div id="assistant" class="tab-content"></div>
             </div>
         </main>
+
+        <!-- Status bar -->
+        <footer class="status-bar" role="contentinfo" aria-label="Estado da aplicação">
+            <div class="status-left">
+                <span class="status-item"><span class="dot"></span><strong>VPO</strong> · v0.9 FEED</span>
+                <span class="status-item">Modelo físico · <strong>Stokes + Souders-Brown</strong></span>
+                <span class="status-item">Otimizador · <strong>NSGA-II</strong></span>
+            </div>
+            <div class="status-right">
+                <span class="status-item" id="statusLastCalc">Último cálculo · <strong>—</strong></span>
+                <span class="status-item">Unidades · <strong>SI</strong></span>
+                <span class="status-item">PT-PT</span>
+            </div>
+        </footer>
     </div>
 
     <script>
@@ -1677,6 +2173,6 @@
             el.addEventListener('click', e => e.stopPropagation());
         });
     </script>
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
 </body>
 </html>
