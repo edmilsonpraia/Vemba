@@ -18,6 +18,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
+    <!-- Three.js para visualização 3D paramétrica do separador.
+         Usa build UMD de r147 (último release com examples/js/ non-module),
+         para que o app funcione DIRECTAMENTE do disco (file://) sem precisar
+         de servidor HTTP — ES modules são bloqueados em file:// por CORS. -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/environments/RoomEnvironment.js" crossorigin="anonymous"></script>
+
     <!-- Favicon VPO (marca própria: gota + V estilizado, cor Vemba) -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2306b6d4'/%3E%3Cstop offset='1' stop-color='%230ea5e9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M32 10c-9 12-14 20-14 28a14 14 0 0 0 28 0c0-8-5-16-14-28z' fill='url(%23g)'/%3E%3Cpath d='M22 28 L32 50 L42 28' stroke='%230b1220' stroke-width='3.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 
@@ -2045,6 +2053,189 @@
             letter-spacing: 0;
         }
 
+        /* ============================================
+           VASO 3D · viewport Three.js
+           ============================================ */
+        .vessel3d-layout {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: var(--spacing-md);
+            align-items: start;
+        }
+        @media (max-width: 1100px) {
+            .vessel3d-layout { grid-template-columns: 1fr; }
+        }
+        .vessel3d-viewport {
+            position: relative;
+            background:
+                radial-gradient(ellipse at center top, #1a2742 0%, #0b1220 70%),
+                var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            height: 560px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        .vessel3d-viewport canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            outline: none;
+        }
+        .vessel3d-loader {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-family: var(--font-ui);
+            pointer-events: none;
+            z-index: 2;
+        }
+        .vessel3d-loader .spin {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border-strong);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .vessel3d-loader.err {
+            color: var(--error);
+        }
+        .vessel3d-loader.err .spin {
+            display: none;
+        }
+        .vessel3d-loader code {
+            display: block;
+            max-width: 480px;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-family: var(--font-family);
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-align: left;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .vessel3d-hud {
+            position: absolute;
+            top: 12px;
+            left: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 11px;
+            font-family: var(--font-ui);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+        .vessel3d-hud strong {
+            color: var(--text-bright);
+            font-weight: 600;
+            font-family: var(--font-display);
+            font-size: 13px;
+        }
+        .vessel3d-hud .key {
+            font-family: var(--font-family);
+            padding: 1px 6px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 4px;
+            margin-right: 6px;
+            font-size: 10px;
+        }
+        .vessel3d-actions {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 4px;
+        }
+        .vessel3d-actions button {
+            background: rgba(22, 33, 56, 0.85);
+            border: 1px solid var(--border-strong);
+            color: var(--text-secondary);
+            padding: 5px 9px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            backdrop-filter: blur(6px);
+            box-shadow: none;
+            font-weight: 500;
+        }
+        .vessel3d-actions button:hover {
+            color: var(--text-bright);
+            border-color: var(--accent);
+            background: var(--accent-ghost);
+        }
+
+        .vessel3d-side {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+        .vessel3d-spec {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-md);
+        }
+        .vessel3d-spec h4 {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin: 0 0 10px 0;
+        }
+        .vessel3d-spec dl {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 6px 10px;
+            margin: 0;
+            font-size: 12px;
+        }
+        .vessel3d-spec dt { color: var(--text-secondary); }
+        .vessel3d-spec dd {
+            color: var(--text-bright);
+            font-family: var(--font-family);
+            font-weight: 600;
+            margin: 0;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .vessel3d-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 12px;
+        }
+        .vessel3d-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+        }
+        .vessel3d-legend span::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .vessel3d-legend .lg-gas::before    { background: rgba(239, 68, 68, 0.85);   border: 1px solid rgba(239, 68, 68, 1); box-shadow: 0 0 6px rgba(239, 68, 68, 0.6); }
+        .vessel3d-legend .lg-oil::before    { background: #0b0b0e;                    border: 1px solid #3a3a42; }
+        .vessel3d-legend .lg-water::before  { background: rgba(37, 99, 235, 0.85);   border: 1px solid rgba(37, 99, 235, 1); }
+        .vessel3d-legend .lg-shell::before  { background: #64748b; border: 1px solid #94a3b8; }
+        .vessel3d-legend .lg-mesh::before   { background: transparent; border: 1.5px dashed #a78bfa; }
+
         /* Banner de validação (invariantes físicos violados) */
         .validation-banner {
             display: flex;
@@ -2332,6 +2523,10 @@
                         <span class="tab-icon"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5L8 0l7 3.5v1L8 8 1 4.5v-1zM8 1.12L2.37 4 8 6.88 13.63 4 8 1.12zM1 7.5l7 3.5 7-3.5v1L8 12 1 8.5v-1zM1 11.5l7 3.5 7-3.5v1L8 16 1 12.5v-1z"/></svg></span>
                         Modelagem
                     </button>
+                    <button class="tab" onclick="switchTab('vessel3d')">
+                        <span class="tab-icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><ellipse cx="8" cy="4" rx="6" ry="1.6"/><path d="M2 4v8c0 .88 2.69 1.6 6 1.6s6-.72 6-1.6V4"/><path d="M2 8c0 .88 2.69 1.6 6 1.6s6-.72 6-1.6"/></svg></span>
+                        Vaso 3D
+                    </button>
                     <button class="tab" onclick="switchTab('neural')">
                         <span class="tab-icon"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V6h3a2 2 0 0 1 2 2v.27c.6.34 1 .99 1 1.73a2 2 0 0 1-2 2c-.74 0-1.39-.4-1.73-1H10v1.27c.6.34 1 .99 1 1.73a2 2 0 1 1-3-1.73V11H5.73c-.34.6-.99 1-1.73 1a2 2 0 0 1-2-2c0-.74.4-1.39 1-1.73V8a2 2 0 0 1 2-2h3V4.73C7.4 4.39 7 3.74 7 3a2 2 0 0 1 1-1zM8 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM4 9a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm8 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-4 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg></span>
                         Redes Neurais
@@ -2365,6 +2560,7 @@
                 <!-- Tab Contents -->
                 <div id="dashboard" class="tab-content active"></div>
                 <div id="modeling" class="tab-content"></div>
+                <div id="vessel3d" class="tab-content"></div>
                 <div id="neural" class="tab-content"></div>
                 <div id="optimization" class="tab-content"></div>
                 <div id="fuzzy" class="tab-content"></div>
@@ -2432,5 +2628,6 @@
         });
     </script>
     <script src="app.js?v=2"></script>
+    <script src="vessel3d.js?v=2"></script>
 </body>
 </html>

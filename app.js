@@ -1103,6 +1103,8 @@ const separatorModel = new SeparatorModel();
 const optimizer = new OptimizationAlgorithms();
 const nnPredictor = new NeuralNetworkPredictor();
 const fuzzyController = new FuzzyController();
+// Expor o modelo para o módulo 3D usar velocidades terminais reais
+try { if (typeof window !== 'undefined') window.separatorModel = separatorModel; } catch (_) {}
 
 // ----------------------------------------------------------------------------
 // VALIDAÇÃO DE PARÂMETROS — invariantes físicos de domínio
@@ -1488,6 +1490,9 @@ function renderTabContent(tabName) {
             break;
         case 'modeling':
             renderModeling();
+            break;
+        case 'vessel3d':
+            renderVessel3D();
             break;
         case 'neural':
             renderNeural();
@@ -2064,6 +2069,225 @@ function renderStokesChart() {
     };
 
     Plotly.newPlot('stokesChart', [traceStokes, traceMorsi], layout);
+}
+
+// ============================================================================
+// VASO 3D · viewport paramétrico Three.js
+// ============================================================================
+function renderVessel3D() {
+    const p = currentParams;
+    const specs = calculateSeparatorDesign(p);
+    const specs3d = {
+        ...specs,
+        waterCut:    p.waterCut,
+        flowRate:    p.flowRate,
+        pressure:    p.pressure,
+        temperature: p.temperature,
+        gor:         p.gor,
+        viscosity:   p.viscosity,
+        rhoOil:      p.rhoOil,
+        rhoWater:    p.rhoWater,
+        rhoGas:      p.rhoGas
+    };
+
+    // Fast path: se o viewport já existe, só actualiza geometria + sidebar numérica.
+    // Evita destruir/recriar WebGL a cada slider tick (performance crítica).
+    const existingViewport = document.getElementById('vessel3dViewport');
+    if (existingViewport && window.VPO3D && window.VPO3D.scene && window.VPO3D.container === existingViewport) {
+        window.VPO3D.update(specs3d);
+        updateVesselSidePanel(specs, p);
+        return;
+    }
+
+    const html = `
+        <header class="page-head">
+            <div>
+                <h2>Vaso 3D · representação física</h2>
+                <p>Modelo paramétrico do separador tri-fásico horizontal. Geometria reconstruída em tempo real a partir do dimensionamento (ASME UG-27/32 + Souders-Brown + tempo de residência). Arraste para orbitar, scroll para zoom.</p>
+            </div>
+            <div class="page-meta">
+                <span>${specs.type}</span>
+                <strong>${specs.D_final.toFixed(2)} × ${specs.L_eff.toFixed(2)} m</strong>
+                <span>D × L efectivo</span>
+            </div>
+        </header>
+
+        <div class="vessel3d-layout">
+            <div class="vessel3d-viewport" id="vessel3dViewport">
+                <div class="vessel3d-loader" id="vessel3dLoader">
+                    <div class="spin"></div>
+                    <div>A carregar motor 3D (Three.js)…</div>
+                </div>
+                <div class="vessel3d-hud">
+                    <strong>Controles</strong>
+                    <span><span class="key">drag</span>orbitar</span>
+                    <span><span class="key">scroll</span>zoom</span>
+                    <span><span class="key">right-drag</span>pan</span>
+                </div>
+                <div class="vessel3d-actions">
+                    <button onclick="VPO3D &amp;&amp; VPO3D.setView('iso')">Isométrica</button>
+                    <button onclick="VPO3D &amp;&amp; VPO3D.setView('side')">Lateral</button>
+                    <button onclick="VPO3D &amp;&amp; VPO3D.setView('front')">Frontal</button>
+                    <button onclick="VPO3D &amp;&amp; VPO3D.setView('top')">Topo</button>
+                    <button id="vesselPauseBtn" onclick="vesselTogglePause()">‖ Pausa</button>
+                    <button onclick="vesselSnapshot()">PNG</button>
+                </div>
+            </div>
+
+            <aside class="vessel3d-side">
+                <div class="vessel3d-spec">
+                    <h4>Dimensões mecânicas</h4>
+                    <dl>
+                        <dt>Tipo</dt><dd>${specs.type.replace('Trifásico', '3-F')}</dd>
+                        <dt>Diâmetro D</dt><dd>${specs.D_final.toFixed(2)} m</dd>
+                        <dt>Comprimento L</dt><dd>${specs.L_eff.toFixed(2)} m</dd>
+                        <dt>Relação L/D</dt><dd>${(specs.L_eff / specs.D_final).toFixed(2)}</dd>
+                        <dt>Espessura t</dt><dd>${specs.t_total} mm</dd>
+                        <dt>Peso estimado</dt><dd>${(specs.weight/1000).toFixed(1)} t</dd>
+                    </dl>
+                </div>
+                <div class="vessel3d-spec">
+                    <h4>Interfaces de fase</h4>
+                    <dl>
+                        <dt>Preenchimento líquido</dt><dd>55 %</dd>
+                        <dt>Corte de água</dt><dd>${p.waterCut.toFixed(0)} %</dd>
+                        <dt>Pressão de projeto</dt><dd>${(p.pressure * 1.1 + 2).toFixed(1)} bar</dd>
+                        <dt>Temperatura</dt><dd>${p.temperature} °C</dd>
+                    </dl>
+                </div>
+                <div class="vessel3d-spec">
+                    <h4>Legenda</h4>
+                    <div class="vessel3d-legend">
+                        <span class="lg-shell">Casco (shell + heads 2:1)</span>
+                        <span class="lg-gas">Gás · bolhas vermelhas</span>
+                        <span class="lg-oil">Petróleo cru · preto</span>
+                        <span class="lg-water">Água · azul</span>
+                        <span class="lg-mesh">Mist extractor (wire mesh)</span>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    `;
+    document.getElementById('vessel3d').innerHTML = html;
+
+    const viewport = document.getElementById('vessel3dViewport');
+    waitForVPO3D((ok, err) => {
+        if (!ok) {
+            showVessel3DError(viewport, err);
+            return;
+        }
+        try {
+            if (!window.VPO3D.scene) {
+                window.VPO3D.init(viewport, specs3d);
+            } else if (window.VPO3D.container !== viewport) {
+                window.VPO3D.dispose();
+                window.VPO3D.init(viewport, specs3d);
+            } else {
+                window.VPO3D.update(specs3d);
+            }
+            // Remove o loader quando o canvas estiver visível
+            const canvas = viewport.querySelector('canvas');
+            const loader = document.getElementById('vessel3dLoader');
+            if (canvas && loader) loader.remove();
+        } catch (e) {
+            console.error('[VPO3D] falha a inicializar:', e);
+            showVessel3DError(viewport, e);
+        }
+    });
+}
+
+// Espera até window.VPO3D estar disponível (módulo ES loaded).
+// Tenta durante 8 segundos; se não aparecer, considera falha.
+function waitForVPO3D(cb, deadline = Date.now() + 8000) {
+    if (window.VPO3D) return cb(true);
+    if (Date.now() > deadline) {
+        return cb(false, new Error('Módulo Three.js não carregou. Verifique a ligação (jsdelivr/CDN) ou o console do browser.'));
+    }
+    setTimeout(() => waitForVPO3D(cb, deadline), 100);
+}
+
+function showVessel3DError(viewport, err) {
+    const loader = viewport.querySelector('.vessel3d-loader');
+    if (!loader) return;
+    loader.classList.add('err');
+    loader.innerHTML = `
+        <strong>Não foi possível carregar o motor 3D</strong>
+        <div style="margin-top:4px">${escapeHtml(err?.message || String(err))}</div>
+        <code>${escapeHtml(err?.stack || '').split('\n').slice(0, 4).join('\n')}</code>
+        <div style="margin-top:8px;color:var(--text-muted)">Abra o console do browser (F12) para mais detalhes. O resto da aplicação continua a funcionar.</div>
+    `;
+}
+
+
+// Update incremental apenas do painel lateral (sem tocar no viewport WebGL)
+function updateVesselSidePanel(specs, p) {
+    const q = (sel) => document.querySelector(sel);
+    const side = document.querySelector('.vessel3d-side');
+    if (!side) return;
+    const specDls = side.querySelectorAll('.vessel3d-spec');
+    if (specDls.length >= 2) {
+        // 1º card: dimensões
+        const dds1 = specDls[0].querySelectorAll('dd');
+        if (dds1[0]) dds1[0].textContent = specs.type.replace('Trifásico', '3-F');
+        if (dds1[1]) dds1[1].textContent = `${specs.D_final.toFixed(2)} m`;
+        if (dds1[2]) dds1[2].textContent = `${specs.L_eff.toFixed(2)} m`;
+        if (dds1[3]) dds1[3].textContent = (specs.L_eff / specs.D_final).toFixed(2);
+        if (dds1[4]) dds1[4].textContent = `${specs.t_total} mm`;
+        if (dds1[5]) dds1[5].textContent = `${(specs.weight/1000).toFixed(1)} t`;
+        // 2º card: interfaces
+        const dds2 = specDls[1].querySelectorAll('dd');
+        if (dds2[1]) dds2[1].textContent = `${p.waterCut.toFixed(0)} %`;
+        if (dds2[2]) dds2[2].textContent = `${(p.pressure * 1.1 + 2).toFixed(1)} bar`;
+        if (dds2[3]) dds2[3].textContent = `${p.temperature} °C`;
+    }
+    // Meta do header
+    const meta = document.querySelector('#vessel3d .page-head .page-meta');
+    if (meta) {
+        const spans = meta.querySelectorAll('span');
+        const strong = meta.querySelector('strong');
+        if (spans[0]) spans[0].textContent = specs.type;
+        if (strong) strong.textContent = `${specs.D_final.toFixed(2)} × ${specs.L_eff.toFixed(2)} m`;
+    }
+}
+
+// Botão: pausar/retomar animação de partículas
+function vesselTogglePause() {
+    if (!window.VPO3D || typeof window.VPO3D.togglePause !== 'function') return;
+    const paused = window.VPO3D.togglePause();
+    const btn = document.getElementById('vesselPauseBtn');
+    if (btn) btn.textContent = paused ? '▶ Retomar' : '‖ Pausa';
+}
+
+// Botão: tirar snapshot PNG do viewport 3D
+function vesselSnapshot() {
+    if (!window.VPO3D) return;
+    const dataUrl = window.VPO3D.snapshot();
+    if (!dataUrl) return;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `VPO-vessel-3D-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+    a.click();
+}
+
+// Hook para actualizar o 3D quando os sliders mudarem e a tab estiver activa
+function maybeUpdateVessel3D() {
+    const tab = document.querySelector('.tab.active');
+    if (!tab || !tab.textContent.includes('Vaso 3D')) return;
+    if (!window.VPO3D || !window.VPO3D.scene) return;
+    const p = currentParams;
+    const specs = calculateSeparatorDesign(p);
+    window.VPO3D.update({
+        ...specs,
+        waterCut:    p.waterCut,
+        flowRate:    p.flowRate,
+        pressure:    p.pressure,
+        temperature: p.temperature,
+        gor:         p.gor,
+        viscosity:   p.viscosity,
+        rhoOil:      p.rhoOil,
+        rhoWater:    p.rhoWater,
+        rhoGas:      p.rhoGas
+    });
 }
 
 // Renderizar Redes Neurais
