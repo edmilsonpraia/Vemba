@@ -399,42 +399,35 @@ class Separator3D {
             return mesh;
         };
 
-        // Materiais LÍQUIDOS reais (PBR com índice de refracção físico)
-        // ÁGUA: azul claro translúcido com refracção ior=1.33
+        // Materiais LÍQUIDOS — OPACOS para divisão NÍTIDA entre fases.
+        // Divisão natural: topo opaco de cada fluido = interface visualmente crisp.
+        // ÁGUA: azul SÓLIDO com superfície espelhada (não translúcida)
         const waterMat = new THREE.MeshPhysicalMaterial({
-            color: 0x2563eb,                 // blue-600 — água do mar / produção
+            color: 0x1d4ed8,                 // blue-700 — tom profundo e sólido
             metalness: 0.0,
-            roughness: 0.08,                  // superfície lisa
-            transmission: 0.70,               // claramente translúcida
-            thickness: 1.5,
-            ior: 1.33,                        // IOR real da água
-            transparent: true,
-            opacity: 0.88,
+            roughness: 0.15,
+            transmission: 0.0,                // OPACA — não vê através
+            transparent: false,
+            opacity: 1.0,
             side: THREE.DoubleSide,
-            depthWrite: false,
-            envMapIntensity: 1.1,
-            clearcoat: 0.6,                   // reflexo de superfície
-            clearcoatRoughness: 0.08,
-            attenuationColor: 0x1e40af,       // blue-800 (mais escuro em profundidade)
-            attenuationDistance: 2.0
+            depthWrite: true,
+            envMapIntensity: 0.6,
+            clearcoat: 1.0,                   // superfície espelhada (water glass)
+            clearcoatRoughness: 0.03
         });
-        // ÓLEO: PETRÓLEO CRU PRETO — quase opaco, superfície viscosa brilhante
+        // ÓLEO: PETRÓLEO CRU PRETO SÓLIDO com superfície viscosa
         const oilMat = new THREE.MeshPhysicalMaterial({
-            color: 0x070708,                 // quase preto absoluto (crude)
+            color: 0x050508,                 // preto absoluto
             metalness: 0.0,
-            roughness: 0.35,                  // superfície viscosa
-            transmission: 0.03,               // quase opaco (crude não vê através)
-            thickness: 2.5,
-            ior: 1.47,                        // IOR real do óleo cru
-            transparent: true,
-            opacity: 0.98,
+            roughness: 0.4,
+            transmission: 0.0,                // OPACO
+            transparent: false,
+            opacity: 1.0,
             side: THREE.DoubleSide,
-            depthWrite: false,
-            envMapIntensity: 1.0,
-            clearcoat: 1.0,                   // SUPERFÍCIE MOLHADA / BRILHANTE
-            clearcoatRoughness: 0.05,         // reflexos agudos (gloss alto)
-            attenuationColor: 0x000000,
-            attenuationDistance: 0.3
+            depthWrite: true,
+            envMapIntensity: 0.9,
+            clearcoat: 1.0,                   // SUPERFÍCIE MOLHADA BRILHANTE
+            clearcoatRoughness: 0.02          // reflexos agudos (gloss alto)
         });
 
         // -- ARQUITECTURA DE 2 CÂMARAS (weir divide em separação + bucket de óleo) --
@@ -464,18 +457,54 @@ class Separator3D {
         }
 
         // ------------------------------------------------------------------
-        // 4. Interfaces (planos finos como marcadores)
+        // 4. LINHAS DE INTERFACE — marcam as divisões O/A e L/G com crisp linhas
+        //    que seguem a elipse de intersecção do plano horizontal com o shell.
         // ------------------------------------------------------------------
-        const interfacePlane = (y, color) => {
-            const g = new THREE.PlaneGeometry(2 * halfL * 0.96, 2 * Math.sqrt(Math.max(0, R*R - y*y)) * 0.98);
-            const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
-            const mesh = new THREE.Mesh(g, m);
-            mesh.rotation.x = -Math.PI / 2;
-            mesh.position.y = y;
-            return mesh;
+        const makeInterfaceLines = (y, color, xStart, xEnd) => {
+            if (Math.abs(y) >= R) return null;
+            const chordHalf = Math.sqrt(R*R - y*y);     // meia-largura da elipse à altura y
+            const g = new THREE.Group();
+            // 2 linhas longitudinais ao longo do shell (bordas da "poça")
+            const lineMat = new THREE.LineBasicMaterial({
+                color, transparent: true, opacity: 0.85, linewidth: 2
+            });
+            for (const z of [-chordHalf * 0.995, +chordHalf * 0.995]) {
+                const pts = [
+                    new THREE.Vector3(xStart + 0.01, y + 0.003, z),
+                    new THREE.Vector3(xEnd   - 0.01, y + 0.003, z)
+                ];
+                g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
+            }
+            // "Reflexo" fino no meio da superfície (highlight)
+            const highlightGeo = new THREE.PlaneGeometry(
+                (xEnd - xStart) * 0.96,
+                chordHalf * 1.85
+            );
+            const highlightMat = new THREE.MeshBasicMaterial({
+                color, transparent: true, opacity: 0.12,
+                side: THREE.DoubleSide, depthWrite: false
+            });
+            const highlight = new THREE.Mesh(highlightGeo, highlightMat);
+            highlight.rotation.x = -Math.PI / 2;
+            highlight.position.set((xStart + xEnd) / 2, y + 0.002, 0);
+            g.add(highlight);
+            return g;
         };
-        if (Math.abs(yWaterLvl) < R) group.add(interfacePlane(yWaterLvl, 0x0ea5e9));
-        if (Math.abs(yOilLvl) < R)   group.add(interfacePlane(yOilLvl, 0xf59e0b));
+
+        // Interface ÓLEO/ÁGUA na câmara esquerda (só onde há água)
+        if (Math.abs(yWaterLvl) < R) {
+            const oaInterface = makeInterfaceLines(yWaterLvl, 0x38bdf8, -halfL * 0.98, waterLeftXE);
+            if (oaInterface) group.add(oaInterface);
+        }
+        // Interface LÍQUIDO/GÁS — em ambas as câmaras (óleo em cima dos dois lados)
+        if (Math.abs(yOilLvl) < R) {
+            const lgLeft = makeInterfaceLines(yOilLvl, 0xfbbf24, -halfL * 0.98, waterLeftXE);
+            if (lgLeft) group.add(lgLeft);
+            if (isHorizontal) {
+                const lgRight = makeInterfaceLines(yOilLvl, 0xfbbf24, weirX + 0.02, halfL * 0.98);
+                if (lgRight) group.add(lgRight);
+            }
+        }
 
         // ------------------------------------------------------------------
         // 5. Weir plate — divisor físico entre câmara de separação e oil bucket
@@ -727,11 +756,19 @@ class Separator3D {
         // ------------------------------------------------------------------
         const TYPE_GAS = 0, TYPE_OIL = 1, TYPE_WATER = 2;
 
-        // População total e composição — proporcional aos parâmetros reais
-        const TOTAL = Math.round(Math.min(900, 400 + pflow * 0.15));
-        const gasFrac = pgor / (pgor + 1000);         // fracção molar gás no inlet
-        const liqFrac = 1 - gasFrac;
-        const oilFrac = liqFrac * (1 - pwc / 100);
+        // POPULAÇÃO — muito reduzida para visual limpo e profissional.
+        // Só se vê actividade visual onde HÁ separação a decorrer (zona do
+        // inlet + bolhas de gás a subir). Particulas que atingem a sua fase
+        // final tornam-se invisíveis — os fluidos parecem uniformes.
+        const TOTAL = Math.round(Math.min(160, 80 + pflow * 0.03));
+        // Favorece GÁS porque é o fenómeno visualmente dominante num separador
+        // real (bolhas a subir continuamente). Óleo/água droplets são raros
+        // em estado estacionário — só os poucos ainda em coalescência.
+        const gasFracReal = pgor / (pgor + 1000);
+        // Boost artificial da fracção gás para efeito visual (sem alterar a física)
+        const gasFrac   = Math.min(0.80, 0.40 + gasFracReal * 2.0);
+        const liqFrac   = 1 - gasFrac;
+        const oilFrac   = liqFrac * (1 - pwc / 100);
         const waterFrac = liqFrac * (pwc / 100);
 
         // weirX e weirTopY já declarados no topo do método update().
@@ -813,14 +850,14 @@ class Separator3D {
 
         // Diâmetros base por tipo (meters). Bolhas de gás variam com pressão.
         const dBase = (t) => {
-            if (t === TYPE_GAS)   return (2e-3 * Math.cbrt(1.0 / Math.max(0.3, ppressure))) * (0.6 + Math.random() * 0.8);
-            if (t === TYPE_OIL)   return 300e-6 * (0.5 + Math.random() * 1.2);
-            return 400e-6 * (0.5 + Math.random() * 1.2);
+            if (t === TYPE_GAS)   return (1.5e-3 * Math.cbrt(1.0 / Math.max(0.3, ppressure))) * (0.6 + Math.random() * 0.8);
+            if (t === TYPE_OIL)   return 250e-6 * (0.5 + Math.random() * 1.0);
+            return 350e-6 * (0.5 + Math.random() * 1.0);
         };
-        // Tamanho visual (raio de desenho) = escala do diâmetro real
+        // Tamanho visual mais pequeno — bolhas discretas em vez de bolas grandes
         const sizeVis = (t, d) => {
-            if (t === TYPE_GAS) return Math.max(0.025, d * 50);
-            return Math.max(0.018, d * 180);
+            if (t === TYPE_GAS) return Math.max(0.018, d * 35);  // bolhas ~2cm max
+            return Math.max(0.012, d * 120);                      // gotas quase invisíveis
         };
 
         // Amostra aleatória de tipo por proporções cumulativas
@@ -864,32 +901,54 @@ class Separator3D {
         const tempColor = new THREE.Color();
         const inletX = -halfL + 0.08;
 
-        // Helper: aplica matrices em ambos os meshes, com escala 0 no que não é dono
+        // Helper: aplica matrices em ambos os meshes, com escala 0 no que não é
+        // dono E TAMBÉM no próprio mesh se a partícula estiver "settled" — para
+        // os fluidos ficarem visualmente uniformes e limpos (sem droplets
+        // acumulados nas fases finais).
         const writeMatrices = (i) => {
-            dummy.position.set(px[i], py[i], pz[i]);
             const isGas = types[i] === TYPE_GAS;
-            dummy.scale.setScalar(isGas ? ZERO_SCALE : size[i]);
+            // Settled → invisível. Gás settled perto da saida → mantém pequeno
+            // (permite ver pequenas bolhas a flutuar no topo antes de saírem).
+            let visibleSize = size[i];
+            if (settled[i]) {
+                if (isGas) {
+                    // bolhas de gás que atingiram o espaço gasoso: ficam ainda
+                    // visíveis mas menores (como vapor residual na superfície)
+                    visibleSize = size[i] * 0.4;
+                } else {
+                    // óleo/água settled: invisíveis (fluido parece uniforme)
+                    visibleSize = ZERO_SCALE;
+                }
+            }
+            dummy.position.set(px[i], py[i], pz[i]);
+            dummy.scale.setScalar(isGas ? ZERO_SCALE : visibleSize);
             dummy.updateMatrix();
             inst.setMatrixAt(i, dummy.matrix);
-            dummy.scale.setScalar(isGas ? size[i] : ZERO_SCALE);
+            dummy.scale.setScalar(isGas ? visibleSize : ZERO_SCALE);
             dummy.updateMatrix();
             gasInst.setMatrixAt(i, dummy.matrix);
         };
 
-        // Inicializa todas as partículas: estado inicial = distribuídas pelo vaso
+        // Inicializa partículas: concentradas na zona de dispersão do inlet
+        // (primeira metade do vaso) — assim o estado inicial já parece ter
+        // separação activa e os fluidos aparecem uniformes.
         for (let i = 0; i < TOTAL; i++) {
             types[i] = sampleType();
             diam[i] = dBase(types[i]);
             size[i] = sizeVis(types[i], diam[i]);
             phase[i] = Math.random() * Math.PI * 2;
-            px[i] = (Math.random() * 2 - 1) * halfL * 0.90;
+            // posição: 70% das particulas no primeiro terço (zona de dispersão)
+            if (Math.random() < 0.7) {
+                px[i] = -halfL + Math.random() * (halfL * 0.8);
+            } else {
+                px[i] = -halfL + Math.random() * (halfL * 1.8);
+            }
             const samp = sampleInCircle(-R + 0.05, R - 0.05);
             py[i] = samp.y;
             pz[i] = samp.z;
             settled[i] = 0;
 
             writeMatrices(i);
-            // Cor por instância só para OIL/WATER (gás usa cor única do material emissivo)
             tempColor.copy(colorByType[types[i]]);
             inst.setColorAt(i, tempColor);
         }

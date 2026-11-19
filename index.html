@@ -6,6 +6,10 @@
     <title>VPO — Vemba Process Optimizer</title>
     <meta name="description" content="VPO · Vemba Process Optimizer — simulação, otimização multiobjectivo e dimensionamento de separadores de produção.">
     <meta name="theme-color" content="#0b1220">
+    <!-- Evita cache de scripts/CSS durante desenvolvimento (pode remover em produção) -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
 
     <!-- Plotly.js (CDN pinned; add SRI hash em produção) -->
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" crossorigin="anonymous"></script>
@@ -2627,7 +2631,7 @@
             el.addEventListener('click', e => e.stopPropagation());
         });
     </script>
-    <script src="app.js?v=2"></script>
-    <script src="vessel3d.js?v=2"></script>
+    <script src="app.js?v=3"></script>
+    <script src="vessel3d.js?v=5"></script>
 </body>
 </html>
